@@ -1,0 +1,77 @@
+{
+  "projectType": "general",
+  "projectName": "HopTab",
+  "projectDescription": "A minimal macOS app switcher that lets you pin specific apps and hop between them with a single shortcut.",
+  "theme": "almond",
+  "primaryColor": "#5B7FFF",
+  "lightColor": "#7A9AFF",
+  "darkColor": "#4A6BDD",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Features",
+        "pages": [
+          "features/app-switching",
+          "features/profiles",
+          "features/desktop-assignment",
+          "features/shortcuts"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/setup",
+          "guides/permissions",
+          "guides/workflows"
+        ]
+      },
+      {
+        "group": "Technical",
+        "pages": [
+          "technical/architecture",
+          "technical/implementation",
+          "technical/building"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/requirements",
+          "reference/troubleshooting",
+          "reference/faq"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Pin specific apps for focused switching",
+    "Global hotkey switching with Option+Tab",
+    "Profiles for different workflows (Coding, Design, Writing)",
+    "Desktop assignment for automatic profile switching",
+    "Profile switcher with Option+` shortcut",
+    "Persistent pins across restarts",
+    "Aggressive window activation via Accessibility API",
+    "Menu bar app with overlay switcher"
+  ],
+  "publicApiSurface": [
+    "AppSwitcherService.activate(_:)",
+    "HotkeyService.configure(preset:)",
+    "HotkeyService.configureAppShortcut(modifierFlag:keyCode:)",
+    "HotkeyService.configureProfileShortcut(modifierFlag:keyCode:)",
+    "Profile(id:name:pinnedApps:)",
+    "PinnedApp(bundleIdentifier:displayName:sortOrder:)",
+    "ShortcutPreset (optionTab, controlTab, optionBacktick)",
+    "CustomShortcut(modifierFlagsRawValue:keyCode:)",
+    "ShortcutSelection (preset/custom)",
+    "SpaceService",
+    "PermissionsService"
+  ]
+}
