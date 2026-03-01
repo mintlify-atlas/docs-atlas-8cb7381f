@@ -1,0 +1,361 @@
+---
+title: Keyboard shortcuts
+description: Customize HopTab's app switcher and profile switcher shortcuts
+---
+
+HopTab provides configurable keyboard shortcuts for both the app switcher and profile switcher. You can choose from preset combinations or define custom shortcuts.
+
+## App switcher shortcuts
+
+The app switcher shortcut controls when the overlay appears and cycles through pinned apps.
+
+### Preset shortcuts
+
+HopTab includes three built-in presets defined in `ShortcutPreset` (`ShortcutConfig.swift:6-64`):
+
+<CardGroup cols={3}>
+  <Card title="Option + Tab" icon="keyboard">
+    **Default**
+    
+    Modifier: `.maskAlternate`
+    
+    Key: `kVK_Tab`
+  </Card>
+  
+  <Card title="Control + Tab" icon="keyboard">
+    Alternative for those who prefer Control
+    
+    Modifier: `.maskControl`
+    
+    Key: `kVK_Tab`
+  </Card>
+  
+  <Card title="Option + `" icon="keyboard">
+    Backtick variant
+    
+    Modifier: `.maskAlternate`
+    
+    Key: `kVK_ANSI_Grave`
+  </Card>
+</CardGroup>
+
+### Preset implementation
+
+The `ShortcutPreset` enum maps display names to modifier flags and key codes (`ShortcutConfig.swift:13-40`):
+
+```swift
+enum ShortcutPreset: String, Codable, CaseIterable, Identifiable {
+    case optionTab
+    case controlTab
+    case optionBacktick
+
+    var displayName: String {
+        switch self {
+        case .optionTab: return "\u{2325} Option + Tab"
+        case .controlTab: return "\u{2303} Control + Tab"
+        case .optionBacktick: return "\u{2325} Option + `"
+        }
+    }
+
+    var modifierFlag: CGEventFlags {
+        switch self {
+        case .optionTab, .optionBacktick: return .maskAlternate
+        case .controlTab: return .maskControl
+        }
+    }
+
+    var keyCode: Int64 {
+        switch self {
+        case .optionTab, .controlTab: return Int64(kVK_Tab)
+        case .optionBacktick: return Int64(kVK_ANSI_Grave)
+        }
+    }
+}
+```
+
+### Custom shortcuts
+
+You can define a custom shortcut with any modifier + key combination. The `CustomShortcut` struct (`ShortcutConfig.swift:67-88`) stores the raw values:
+
+```swift
+struct CustomShortcut: Codable, Equatable {
+    let modifierFlagsRawValue: UInt64
+    let keyCode: Int64
+
+    var modifierFlags: CGEventFlags {
+        CGEventFlags(rawValue: modifierFlagsRawValue)
+    }
+
+    var keyName: String {
+        KeyCodeMapping.displayName(for: Int(keyCode)) ?? "Key \(keyCode)"
+    }
+
+    var modifierName: String {
+        let names = KeyCodeMapping.modifierDisplayNames(for: modifierFlags)
+        return names.isEmpty ? "" : names.joined(separator: " + ")
+    }
+}
+```
+
+## Profile switcher shortcuts
+
+The profile switcher has its own configurable shortcut, separate from the app switcher.
+
+### Default behavior
+
+By default, the profile switcher uses `Option + \`` (backtick). However, if you configure the app switcher to use `Option + \``, the profile switcher automatically falls back to `Control + \`` to avoid conflicts.
+
+This logic is implemented in `AppState.swift:130-159`:
+
+```swift
+private func applyProfileShortcut() {
+    let modFlag: CGEventFlags
+    let keyCode: Int64
+    let modName: String
+    let keyName: String
+
+    if isCustomProfileShortcut, let c = customProfileShortcut {
+        modFlag = c.modifierFlags
+        keyCode = c.keyCode
+        modName = c.modifierName
+        keyName = c.keyName
+    } else {
+        // Auto-fallback if app shortcut conflicts
+        if appShortcutSelection.modifierFlags == .maskAlternate &&
+           appShortcutSelection.keyCode == Int64(kVK_ANSI_Grave) {
+            modFlag = .maskControl
+            keyCode = Int64(kVK_ANSI_Grave)
+            modName = "Control"
+        } else {
+            modFlag = .maskAlternate
+            keyCode = Int64(kVK_ANSI_Grave)
+            modName = "Option"
+        }
+        keyName = "`"
+    }
+
+    hotkeyService.configureProfileShortcut(modifierFlag: modFlag, keyCode: keyCode)
+    profileShortcutModifierName = modName
+    profileShortcutKeyName = keyName
+    checkConflicts()
+}
+```
+
+<Note>
+The automatic fallback prevents you from accidentally configuring identical shortcuts for both switchers.
+</Note>
+
+## Configuring shortcuts
+
+### In the Settings window
+
+<Steps>
+  <Step title="Open Settings">
+    Click the HopTab menu bar icon and select **Settings**
+  </Step>
+  
+  <Step title="Go to Shortcuts tab">
+    Navigate to the **Shortcut** section
+  </Step>
+  
+  <Step title="Select a preset or custom">
+    Choose from the preset options or enable custom mode to record your own shortcut
+  </Step>
+  
+  <Step title="Restart the hotkey service">
+    HopTab automatically restarts the event tap with the new configuration
+  </Step>
+</Steps>
+
+### Programmatically
+
+Shortcuts are applied by calling methods on `HotkeyService`:
+
+```swift
+func configure(preset: ShortcutPreset) {
+    let wasRunning = eventTap != nil
+    if wasRunning { stop() }
+    modifierFlag = preset.modifierFlag
+    triggerKeyCode = preset.keyCode
+    if wasRunning { start() }
+}
+
+func configureAppShortcut(modifierFlag: CGEventFlags, keyCode: Int64) {
+    let wasRunning = eventTap != nil
+    if wasRunning { stop() }
+    self.modifierFlag = modifierFlag
+    self.triggerKeyCode = keyCode
+    if wasRunning { start() }
+}
+```
+
+The service stops the event tap, updates the shortcut parameters, and restarts the tap to pick up the new configuration.
+
+## Shortcut persistence
+
+Shortcuts are saved to `UserDefaults` and restored on app launch.
+
+### App shortcut storage
+
+The `ShortcutSelection` enum (`ShortcutConfig.swift:135-157`) handles persistence:
+
+```swift
+static var current: ShortcutSelection {
+    get {
+        let mode = UserDefaults.standard.string(forKey: modeKey) ?? "preset"
+        if mode == "custom",
+           let data = UserDefaults.standard.data(forKey: customDataKey),
+           let custom = try? JSONDecoder().decode(CustomShortcut.self, from: data) {
+            return .custom(custom)
+        }
+        return .preset(ShortcutPreset.current)
+    }
+    set {
+        switch newValue {
+        case .preset(let p):
+            UserDefaults.standard.set("preset", forKey: modeKey)
+            ShortcutPreset.current = p
+        case .custom(let c):
+            UserDefaults.standard.set("custom", forKey: modeKey)
+            if let data = try? JSONEncoder().encode(c) {
+                UserDefaults.standard.set(data, forKey: customDataKey)
+            }
+        }
+    }
+}
+```
+
+### Profile shortcut storage
+
+Profile shortcuts are stored separately (`ShortcutConfig.swift:168-180`):
+
+```swift
+static var savedProfileShortcut: CustomShortcut? {
+    get {
+        guard let data = UserDefaults.standard.data(forKey: profileDataKey) else { return nil }
+        return try? JSONDecoder().decode(CustomShortcut.self, from: data)
+    }
+    set {
+        if let c = newValue, let data = try? JSONEncoder().encode(c) {
+            UserDefaults.standard.set(data, forKey: profileDataKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: profileDataKey)
+        }
+    }
+}
+```
+
+## How shortcuts are detected
+
+HopTab uses a `CGEvent` tap to intercept keyboard events globally. When you press keys, the `hotkeyCallback` function (`HotkeyService.swift:248-260`) is invoked:
+
+```swift
+private func hotkeyCallback(
+    proxy: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    userInfo: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    guard let userInfo else { return Unmanaged.passUnretained(event) }
+    let service = Unmanaged<HotkeyService>.fromOpaque(userInfo).takeUnretainedValue()
+    if let result = service.handleEvent(type: type, event: event) {
+        return Unmanaged.passUnretained(result)
+    }
+    return nil // swallow
+}
+```
+
+### Event tap setup
+
+The event tap is created in `HotkeyService.start()` (`HotkeyService.swift:62-94`):
+
+```swift
+func start() {
+    guard eventTap == nil else { return }
+
+    let mask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+        | (1 << CGEventType.keyDown.rawValue)
+        | (1 << CGEventType.keyUp.rawValue)
+
+    guard let tap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: .defaultTap,
+        eventsOfInterest: mask,
+        callback: hotkeyCallback,
+        userInfo: Unmanaged.passUnretained(self).toOpaque()
+    ) else {
+        NSLog("[HotkeyService] Failed to create event tap — Accessibility not granted?")
+        DispatchQueue.main.async { [weak self] in
+            self?.onTapFailed?()
+        }
+        return
+    }
+
+    eventTap = tap
+    let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+    runLoopSource = source
+    CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+}
+```
+
+<Warning>
+**Accessibility permission is required** for the event tap to work. Without it, `CGEvent.tapCreate` returns `nil` and shortcuts won't be detected.
+</Warning>
+
+## Modifier key tracking
+
+HopTab tracks modifier key state separately for the app switcher and profile switcher (`HotkeyService.swift:29-32`):
+
+```swift
+private(set) var isModifierHeld = false
+private(set) var isSwitcherActive = false
+private(set) var isProfileModifierHeld = false
+private(set) var isProfileSwitcherActive = false
+```
+
+When a `flagsChanged` event occurs, the service updates these flags (`HotkeyService.swift:139-164`):
+
+```swift
+if type == .flagsChanged {
+    // App switcher modifier tracking
+    let appModDown = flags.contains(modifierFlag)
+    if appModDown && !isModifierHeld {
+        isModifierHeld = true
+    } else if !appModDown && isModifierHeld {
+        isModifierHeld = false
+        if isSwitcherActive {
+            isSwitcherActive = false
+            onSwitcherDismissed?()
+            return nil
+        }
+    }
+
+    // Profile switcher modifier tracking
+    let profileModDown = flags.contains(profileModifierFlag)
+    if profileModDown && !isProfileModifierHeld {
+        isProfileModifierHeld = true
+    } else if !profileModDown && isProfileModifierHeld {
+        isProfileModifierHeld = false
+        if isProfileSwitcherActive {
+            isProfileSwitcherActive = false
+            onProfileSwitcherDismissed?()
+            return nil
+        }
+    }
+
+    return event
+}
+```
+
+This allows the "release to activate" behavior — when you release the modifier key, the switcher dismisses and activates the selected app or profile.
+
+<CardGroup cols={2}>
+  <Card title="App switching" icon="arrow-right-arrow-left" href="/features/app-switching">
+    Learn how the app switcher uses shortcuts
+  </Card>
+  <Card title="Profiles" icon="layer-group" href="/features/profiles">
+    Understand the profile switcher shortcut
+  </Card>
+</CardGroup>

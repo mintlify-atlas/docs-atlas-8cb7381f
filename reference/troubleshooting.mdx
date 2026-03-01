@@ -1,0 +1,197 @@
+---
+title: Troubleshooting
+description: Common issues and how to fix them
+---
+
+## Accessibility permission
+
+### The app switcher doesn't appear when I press Option+Tab
+
+This usually means HopTab doesn't have Accessibility permission.
+
+**How to fix:**
+
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Check if HopTab is in the list
+3. If it's there, make sure it's toggled **on**
+4. If it's not there, click the **+** button and add HopTab from `/Applications`
+
+<Warning>
+  If you see the error "Failed to create event tap" in the logs, this confirms Accessibility permission is missing or disabled.
+</Warning>
+
+HopTab automatically detects when permission is granted and starts the event tap. You don't need to restart the app.
+
+### The system prompt never appeared
+
+HopTab only shows the Accessibility prompt **once** on first launch. If you dismissed it, you need to manually enable it in System Settings.
+
+Alternatively, you can trigger the prompt again from HopTab:
+
+1. Open **Settings** from the menu bar
+2. Look for the Accessibility permission status
+3. Click **Request Permission** to show the system prompt again
+
+## Event tap issues
+
+### Event tap disabled by timeout
+
+MacOS sometimes disables event taps if they take too long to process events (typically more than 1 second). When this happens, you'll see this in the logs:
+
+```
+[HotkeyService] Re-enabled event tap after timeout — reset modifier state
+```
+
+HopTab automatically re-enables the tap when this happens. However, if the switcher was active, it will be cancelled.
+
+**How to avoid:**
+
+- Keep your Mac responsive (avoid heavy CPU/disk load while switching apps)
+- If you notice slowness, quit and relaunch HopTab
+
+<Info>
+  Event tap timeouts are rare. They usually only happen if your Mac is under heavy load or if another app is blocking the event queue.
+</Info>
+
+### The shortcut stopped working after sleep/unlock
+
+The event tap should survive sleep/wake and lock/unlock cycles. If it stops working:
+
+1. Check **System Settings > Privacy & Security > Accessibility** — make sure HopTab is still enabled
+2. Quit HopTab and relaunch it
+3. If the problem persists, reboot your Mac
+
+## Desktop assignment issues
+
+### Desktop assignments stopped working after reboot
+
+This is expected behavior. Space IDs are **session-local** — they can change after a reboot or when you add/remove desktops.
+
+**How to fix:**
+
+1. Swipe to the desktop you want to assign
+2. Open **Settings > Profiles**
+3. Click **Assign to this desktop** next to the profile you want
+4. Repeat for other desktops
+
+Reassigning takes 5 seconds and only needs to be done after reboots or when you reorganize your Spaces.
+
+<Accordion title="Why do Space IDs change?">
+  HopTab uses the private `CGSGetActiveSpace` API to identify macOS Spaces. Space IDs are assigned dynamically by the window server and are not persistent across sessions.
+
+  Apple doesn't provide a public API for stable Space identifiers, so this is the best available solution. The app degrades gracefully if Space IDs become stale.
+</Accordion>
+
+### Desktop assignments never worked
+
+If desktop assignment has never worked for you:
+
+1. Make sure you're on **macOS 14.0 (Sonoma) or later**
+2. Check if you have multiple desktops/Spaces enabled:
+   - Open **Mission Control** (swipe up with three fingers or press F3)
+   - You should see multiple desktop thumbnails at the top
+   - If not, click **+** to create a new desktop
+3. Try assigning a profile to a desktop again
+
+If it still doesn't work, the private `CGSGetActiveSpace` API may have changed in a newer macOS version. Please file an issue on GitHub.
+
+## Gatekeeper and quarantine issues
+
+### "Apple could not verify HopTab"
+
+This warning appears because HopTab is **ad-hoc signed** (not Apple notarized). This is normal and expected.
+
+**How to fix:**
+
+```bash
+xattr -d com.apple.quarantine /Applications/HopTab.app
+```
+
+This removes the quarantine flag and allows HopTab to launch normally.
+
+<Info>
+  This is safe — HopTab is open source and you can verify the code yourself before running it.
+</Info>
+
+### "HopTab is damaged and can't be opened"
+
+This usually happens if you downloaded HopTab from a source other than the official GitHub releases, or if the download was corrupted.
+
+**How to fix:**
+
+1. Delete the corrupted HopTab.app
+2. Download the latest release from [GitHub Releases](https://github.com/royalbhati/HopTab/releases/latest)
+3. Unzip and drag to `/Applications`
+4. Run the `xattr` command:
+   ```bash
+   xattr -d com.apple.quarantine /Applications/HopTab.app
+   ```
+
+If the error persists, try the one-liner install:
+
+```bash
+curl -sL "$(curl -s https://api.github.com/repos/royalbhati/HopTab/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' \
+  | head -1 \
+  | cut -d '"' -f 4)" -o /tmp/HopTab.zip \
+  && unzip -o /tmp/HopTab.zip -d /Applications \
+  && xattr -d com.apple.quarantine /Applications/HopTab.app
+```
+
+## App switching issues
+
+### Some apps don't raise to the front
+
+HopTab uses the Accessibility API (`kAXRaiseAction`) to force-raise windows. This is more aggressive than `NSRunningApplication.activate()` and works with stubborn apps like Simulator.
+
+If an app still doesn't raise:
+
+1. Make sure the app is actually running (not just in the Dock)
+2. Try clicking the app in the switcher overlay instead of using the keyboard
+3. If the app has multiple windows, try activating it from the macOS menu bar first
+
+<Note>
+  Some apps (like system utilities) may not respond to Accessibility API commands. This is a macOS limitation, not a HopTab bug.
+</Note>
+
+### The switcher shows apps that aren't running
+
+Pinned apps remain in your profile even if they're not currently running. This is intentional — you can still see them in the switcher, but activating them will launch the app.
+
+If you don't want to see apps that aren't running:
+
+1. Open **Settings > Pinned Apps**
+2. Unpin the apps you don't want to see
+
+## Profile switcher issues
+
+### Profile switcher shortcut (Option+\`) doesn't work
+
+If you changed the app switcher shortcut to **Option+\`**, the profile switcher automatically falls back to **Control+\`** to avoid conflicts.
+
+Check what shortcut the profile switcher is using:
+
+1. Open **Settings > Shortcut**
+2. Look for the profile switcher shortcut (it's shown below the app switcher shortcut)
+
+### Profiles don't switch when I swipe between desktops
+
+Make sure you assigned a profile to each desktop:
+
+1. Swipe to the desktop you want
+2. Open **Settings > Profiles**
+3. Click **Assign to this desktop** next to the profile
+
+If assignments stop working after a reboot, see [Desktop assignments stopped working after reboot](#desktop-assignments-stopped-working-after-reboot).
+
+## Getting help
+
+If none of the above solutions work:
+
+1. Check the [FAQ](/reference/faq) for more common questions
+2. File an issue on [GitHub Issues](https://github.com/royalbhati/HopTab/issues)
+3. Include:
+   - Your macOS version
+   - HopTab version (from **About** in the menu bar)
+   - Steps to reproduce the issue
+   - Any error messages from Console.app (filter for "HopTab")

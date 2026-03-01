@@ -1,0 +1,191 @@
+---
+title: Permissions guide
+description: Why HopTab needs accessibility access and how to troubleshoot permission issues
+---
+
+HopTab requires **Accessibility** permission to function. This guide explains why, how to grant it, and how to fix common issues.
+
+## Why accessibility is needed
+
+HopTab monitors keyboard events system-wide to detect shortcuts like **Option+Tab**. On macOS, this requires:
+
+- **CGEvent tap** to intercept and swallow keyboard events
+- **Accessibility API** to force-raise app windows
+
+Here's what HopTab does with these permissions:
+
+<AccordionGroup>
+  <Accordion title="Detect global shortcuts">
+    HopTab uses `CGEvent.tapCreate(.cgSessionEventTap)` to monitor keyboard events across all apps. This allows it to:
+
+    - Detect when you press **Option+Tab** or your custom shortcut
+    - Track modifier key state (Option, Control, Shift)
+    - Swallow the shortcut so it doesn't reach other apps
+
+    ```swift
+    let tap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: .defaultTap,
+        eventsOfInterest: mask,
+        callback: hotkeyCallback,
+        userInfo: userInfo
+    )
+    ```
+
+    <Note>
+      Without this tap, HopTab cannot detect shortcuts. `NSEvent.addGlobalMonitorForEvents` is insufficient because it cannot prevent events from reaching other apps.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Activate apps reliably">
+    On macOS 14+, `NSRunningApplication.activate()` doesn't always bring windows to the front. HopTab uses the Accessibility API to force-raise windows:
+
+    ```swift
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementPerformAction(app, kAXRaiseAction)
+    ```
+
+    This ensures stubborn apps like **Simulator** and **Xcode** always come to the front when you switch to them.
+  </Accordion>
+
+  <Accordion title="Track running apps">
+    HopTab reads the list of running apps to show you which apps are available to pin. It uses `NSWorkspace.runningApplications` to:
+
+    - Display app names and icons in Settings
+    - Show running status (green dot) for pinned apps
+    - Detect when apps launch or quit
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  HopTab does **not** record keystrokes, read window contents, or access your data. It only monitors the specific shortcuts you configure.
+</Warning>
+
+## Granting accessibility permission
+
+<Steps>
+  <Step title="Launch HopTab">
+    The first time you launch HopTab, macOS will show a system dialog requesting Accessibility permission.
+
+    Click **Open System Settings** to continue.
+  </Step>
+
+  <Step title="Enable HopTab in Accessibility">
+    System Settings will open to **Privacy & Security > Accessibility**.
+
+    Find **HopTab** in the list and toggle it **on**.
+
+    <Note>
+      If HopTab isn't in the list, restart the app. It should appear after requesting permission once.
+    </Note>
+  </Step>
+
+  <Step title="Verify permission granted">
+    Return to HopTab and open **Settings > Shortcut**.
+
+    You should see:
+    - **Status: Active** with a green checkmark
+    - No warning banner about Accessibility
+
+    If you see **Status: Failed**, HopTab couldn't create the event tap. See [Troubleshooting](#troubleshooting) below.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Permission granted but shortcuts don't work
+
+If HopTab shows **Status: Failed** even after granting Accessibility:
+
+1. **Toggle HopTab off and on** in System Settings > Privacy & Security > Accessibility
+2. **Restart HopTab** - quit from the menu bar and relaunch
+3. **Check for macOS dialogs** - sometimes macOS shows a secondary confirmation dialog
+
+<Note>
+  HopTab checks permission using `AXIsProcessTrusted()` and polls every second until granted. If you see the permission dialog, grant it and wait a few seconds for HopTab to detect it.
+</Note>
+
+### HopTab not in Accessibility list
+
+If HopTab doesn't appear in System Settings > Privacy & Security > Accessibility:
+
+1. **Request permission manually** - open **Settings** in HopTab and click **Open Accessibility Settings**
+2. **Restart HopTab** - the app should request permission on next launch
+3. **Check App Sandbox** - if you built from source, ensure the app is **not** sandboxed (CGEvent taps are incompatible with the App Sandbox)
+
+### Gatekeeper quarantine warning
+
+If you downloaded HopTab from GitHub Releases and see *"Apple could not verify HopTab"*:
+
+```bash
+xattr -d com.apple.quarantine /Applications/HopTab.app
+```
+
+This clears the quarantine flag. HopTab is ad-hoc signed (not Apple notarized), so macOS blocks it by default.
+
+<Info>
+  You can verify the source code yourself on [GitHub](https://github.com/royalbhati/HopTab) before running this command.
+</Info>
+
+### Event tap disabled by timeout
+
+If the overlay suddenly stops appearing:
+
+- macOS can disable event taps after a timeout (rare but possible)
+- HopTab detects this with `.tapDisabledByTimeout` and re-enables the tap automatically
+- If it persists, toggle Accessibility permission off and on
+
+### Profile switcher conflicts with app switcher
+
+If both shortcuts use the same keys (e.g., **Option+`**), the app switcher takes priority.
+
+You'll see an orange warning banner in **Settings > Shortcut**:
+
+> App and profile shortcuts conflict — app switcher takes priority.
+
+To fix:
+- Change the app switcher to a different preset (e.g., **Control+Tab**)
+- Or enable **Custom shortcut** for the profile switcher and choose different keys
+
+## Advanced
+
+### Why HopTab can't be sandboxed
+
+The macOS App Sandbox restricts access to system APIs. `CGEvent.tapCreate(.defaultTap)` requires raw event access, which is incompatible with the sandbox.
+
+HopTab's Xcode project **disables** the App Sandbox entitlement. This is required for the event tap to work.
+
+<Warning>
+  If you fork HopTab and enable sandboxing, the app will compile but shortcuts will **silently fail** at runtime.
+</Warning>
+
+### Checking permission programmatically
+
+HopTab uses `AXIsProcessTrusted()` to check permission status:
+
+```swift
+init() {
+    isTrusted = AXIsProcessTrusted()
+}
+```
+
+To request permission (shows system dialog):
+
+```swift
+let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+isTrusted = AXIsProcessTrustedWithOptions(opts)
+```
+
+HopTab only shows the dialog **once** on first launch. Subsequent launches poll silently.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Initial setup" icon="rocket" href="/guides/setup">
+    First launch, pinning apps, and testing shortcuts
+  </Card>
+  <Card title="Keyboard shortcuts" icon="keyboard" href="/reference/shortcuts">
+    Complete list of keyboard shortcuts and how to customize them
+  </Card>
+</CardGroup>

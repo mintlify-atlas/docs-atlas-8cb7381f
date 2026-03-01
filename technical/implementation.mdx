@@ -1,0 +1,322 @@
+---
+title: Implementation details
+description: Deep dive into HopTab's technical implementation
+---
+
+This page documents the key technical implementations that make HopTab work.
+
+## Global hotkey capture
+
+### Why CGEvent tap?
+
+HopTab uses `CGEvent.tapCreate` instead of `NSEvent.addGlobalMonitorForEvents` for a critical reason: **event swallowing**.
+
+```swift HopTab/Services/HotkeyService.swift
+guard let tap = CGEvent.tapCreate(
+    tap: .cgSessionEventTap,
+    place: .headInsertEventTap,
+    options: .defaultTap,
+    eventsOfInterest: mask,
+    callback: hotkeyCallback,
+    userInfo: Unmanaged.passUnretained(self).toOpaque()
+) else {
+    NSLog("[HotkeyService] Failed to create event tap — Accessibility not granted?")
+    DispatchQueue.main.async { [weak self] in
+        self?.onTapFailed?()
+    }
+    return
+}
+```
+
+<Note>
+Returning `nil` from the event tap callback **swallows** the event, preventing it from reaching other apps. This is essential to avoid triggering the system's Cmd+Tab switcher while HopTab is active.
+</Note>
+
+The event tap monitors:
+
+- `flagsChanged` - Modifier key presses (Option, Control, Shift)
+- `keyDown` - Tab, backtick, Escape key presses
+- `keyUp` - Key releases
+
+### Event processing logic
+
+The hotkey service maintains state for both the app switcher and profile switcher:
+
+```swift HopTab/Services/HotkeyService.swift
+private(set) var isModifierHeld = false
+private(set) var isSwitcherActive = false
+private(set) var isProfileModifierHeld = false
+private(set) var isProfileSwitcherActive = false
+```
+
+When the modifier is pressed:
+
+1. `flagsChanged` event detected
+2. `isModifierHeld = true`
+3. When trigger key (Tab/`) pressed → `isSwitcherActive = true` → callback fires
+4. Subsequent Tab presses cycle forward/backward
+5. When modifier released → `onSwitcherDismissed` callback fires
+6. Event tap returns `nil` to swallow the shortcut
+
+### Timeout recovery
+
+If macOS disables the tap due to timeout (e.g., system under heavy load), HopTab re-enables it:
+
+```swift HopTab/Services/HotkeyService.swift
+if type == .tapDisabledByTimeout {
+    if let tap = eventTap {
+        if isSwitcherActive {
+            isSwitcherActive = false
+            onSwitcherCancelled?()
+        }
+        if isProfileSwitcherActive {
+            isProfileSwitcherActive = false
+            onProfileSwitcherCancelled?()
+        }
+        isModifierHeld = false
+        isProfileModifierHeld = false
+
+        CGEvent.tapEnable(tap: tap, enable: true)
+        NSLog("[HotkeyService] Re-enabled event tap after timeout — reset modifier state")
+    }
+    return event
+}
+```
+
+## App activation and window raising
+
+### The problem with NSRunningApplication.activate()
+
+On macOS 14+, the standard `NSRunningApplication.activate()` has a bug: it updates the menu bar to show the app as active, but doesn't always bring windows to the front. This is especially problematic for apps like Simulator and Terminal.
+
+### The solution: AXUIElement + kAXRaiseAction
+
+```swift HopTab/Services/AppSwitcherService.swift
+private static func activateRunning(_ app: NSRunningApplication) {
+    // 1. Unhide first — hidden apps won't come to front otherwise
+    if app.isHidden {
+        app.unhide()
+    }
+
+    // 2. Use the older, more aggressive activate API
+    //    The macOS 14+ parameterless activate() is weaker and doesn't
+    //    always raise windows for apps like Simulator, Terminal, etc.
+    app.activate(options: .activateIgnoringOtherApps)
+
+    // 3. Raise the frontmost window via Accessibility API as a fallback.
+    //    This forces the window to the top of the window stack, solving
+    //    the issue where activate() updates the menu bar but leaves
+    //    the window behind other apps.
+    raiseWindows(of: app)
+}
+```
+
+The `raiseWindows` function uses the Accessibility API to force windows to the front:
+
+```swift HopTab/Services/AppSwitcherService.swift
+private static func raiseWindows(of app: NSRunningApplication) {
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value)
+    guard result == .success, let windows = value as? [AXUIElement] else { return }
+
+    for window in windows {
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    }
+}
+```
+
+<Info>
+This approach **requires Accessibility permission**. Without it, `AXUIElementCopyAttributeValue` fails and windows won't raise reliably.
+</Info>
+
+### Launching stopped apps
+
+If a pinned app isn't running, HopTab launches it:
+
+```swift HopTab/Services/AppSwitcherService.swift
+private static func launchApp(at url: URL) {
+    let config = NSWorkspace.OpenConfiguration()
+    config.activates = true
+    NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+        if let error {
+            NSLog("[AppSwitcherService] Failed to launch app: %@", error.localizedDescription)
+        }
+    }
+}
+```
+
+## Overlay window implementation
+
+### Non-activating panel
+
+The overlay must appear above all windows without stealing focus or triggering window activation. This is achieved with `NSPanel`:
+
+```swift HopTab/Views/OverlayPanel.swift
+final class OverlayPanel: NSPanel {
+    init() {
+        super.init(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        isFloatingPanel = true
+        level = .screenSaver
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        hidesOnDeactivate = false
+        isMovableByWindowBackground = false
+        isReleasedWhenClosed = false
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+```
+
+Key properties:
+
+- **`.borderless, .nonactivatingPanel`** - No title bar, doesn't activate when shown
+- **`level = .screenSaver`** - Floats above all normal windows (even fullscreen apps)
+- **`.canJoinAllSpaces`** - Appears on all desktops
+- **`.fullScreenAuxiliary`** - Shows above fullscreen apps
+- **`canBecomeKey/Main = false`** - Never steals keyboard focus
+
+### SwiftUI integration
+
+The panel's content is a SwiftUI view wrapped in `NSHostingView`:
+
+```swift HopTab/Views/OverlayPanel.swift
+func show(apps: [PinnedApp], selectedIndex: Int) {
+    let panel = OverlayPanel()
+
+    let overlayView = OverlayView(apps: apps, selectedIndex: selectedIndex)
+    let hostingView = NSHostingView(rootView: overlayView)
+    hostingView.frame = NSRect(x: 0, y: 0, width: 1, height: 1) // will resize
+    panel.contentView = hostingView
+
+    // Size to fit the content
+    let fittingSize = hostingView.fittingSize
+    let screenFrame = NSScreen.main?.frame ?? .zero
+    let panelFrame = NSRect(
+        x: (screenFrame.width - fittingSize.width) / 2 + screenFrame.origin.x,
+        y: (screenFrame.height - fittingSize.height) / 2 + screenFrame.origin.y,
+        width: fittingSize.width,
+        height: fittingSize.height
+    )
+    panel.setFrame(panelFrame, display: true)
+
+    panel.orderFrontRegardless()
+    self.panel = panel
+}
+```
+
+<Note>
+`orderFrontRegardless()` ensures the panel appears even when the app isn't active.
+</Note>
+
+## Desktop (Space) tracking
+
+### Private CGS API
+
+HopTab tracks the active macOS desktop (Space) using private CoreGraphics Services APIs:
+
+```swift HopTab/Services/SpaceService.swift
+/// Returns the numeric ID of the currently active Space, or nil if
+/// the private API is unavailable.
+static var currentSpaceId: Int? {
+    let conn = CGSMainConnectionID()
+    guard conn > 0 else { return nil }
+    let spaceId = CGSGetActiveSpace(conn)
+    guard spaceId > 0 else { return nil }
+    return spaceId
+}
+
+// MARK: - Private CGS declarations
+
+/// Connection ID for the current login session.
+@_silgen_name("CGSMainConnectionID")
+private func CGSMainConnectionID() -> Int32
+
+/// Returns the Space ID of the currently active desktop.
+@_silgen_name("CGSGetActiveSpace")
+private func CGSGetActiveSpace(_ cid: Int32) -> Int
+```
+
+<Warning>
+Space IDs are **session-local integers** that can change after a reboot or when Spaces are added/removed. HopTab stores them in `UserDefaults`, but they may become stale.
+</Warning>
+
+### Auto-switching profiles on Space change
+
+When you swipe to a different desktop, HopTab detects the change and switches profiles:
+
+```swift HopTab/App/AppState.swift
+private func observeWorkspace() {
+    let center = NSWorkspace.shared.notificationCenter
+
+    // Auto-switch profile when the active Space changes
+    let spaceObserver = center.addObserver(
+        forName: NSWorkspace.activeSpaceDidChangeNotification,
+        object: nil,
+        queue: .main
+    ) { [weak self] _ in
+        Task { @MainActor in
+            self?.handleSpaceChange()
+        }
+    }
+    workspaceObservers.append(spaceObserver)
+}
+
+private func handleSpaceChange() {
+    guard let spaceId = SpaceService.currentSpaceId,
+          let profileId = store.profileForSpace(spaceId)
+    else { return }
+    store.setActiveProfile(id: profileId)
+}
+```
+
+The system posts `NSWorkspace.activeSpaceDidChangeNotification` when you:
+
+- Swipe between desktops with trackpad gestures
+- Use Ctrl+Arrow keyboard shortcuts
+- Click a desktop in Mission Control
+
+## Permissions handling
+
+HopTab checks for Accessibility permission at launch:
+
+```swift HopTab/App/AppDelegate.swift
+func applicationDidFinishLaunching(_ notification: Notification) {
+    if appState.permissions.isTrusted {
+        appState.startHotkey()
+    } else {
+        // Prompt only on first-ever launch; poll silently afterwards
+        appState.permissions.promptIfNeeded()
+
+        // Start hotkey as soon as permission is granted
+        appState.permissions.$isTrusted
+            .removeDuplicates()
+            .filter { $0 }
+            .first()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.appState.startHotkey()
+            }
+            .store(in: &cancellables)
+    }
+}
+```
+
+The permission check uses `AXIsProcessTrusted()` with an optional prompt:
+
+```swift
+AXIsProcessTrusted() // Check without prompting
+AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt: true] as CFDictionary) // Prompt user
+```
+
+If permission is denied, the event tap creation fails and the app displays a warning in settings.

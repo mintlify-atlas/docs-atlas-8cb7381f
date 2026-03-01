@@ -1,0 +1,94 @@
+---
+title: Initial setup
+description: Get HopTab running on your Mac in minutes
+---
+
+HopTab lives in your menu bar and requires a one-time accessibility permission to detect keyboard shortcuts. This guide walks you through first launch and basic configuration.
+
+## First launch
+
+<Steps>
+  <Step title="Grant accessibility permission">
+    When you launch HopTab for the first time, it will request **Accessibility** permission. This is required to detect global keyboard shortcuts like Option+Tab.
+
+    <Note>
+      HopTab uses `CGEvent.tapCreate` to monitor keyboard events system-wide. macOS requires explicit user consent for this capability.
+    </Note>
+
+    Click **Open System Settings** when prompted, then:
+
+    1. Navigate to **System Settings > Privacy & Security > Accessibility**
+    2. Find **HopTab** in the list
+    3. Toggle it **on**
+    4. Return to HopTab
+
+    <Warning>
+      Without Accessibility permission, HopTab cannot detect your shortcuts. The app will show a warning banner in Settings until you grant access.
+    </Warning>
+  </Step>
+
+  <Step title="Pin your first apps">
+    Once permission is granted, open **Settings** from the menu bar icon and go to the **Pinned Apps** tab.
+
+    HopTab shows all running apps in the lower section. Click any app to pin it:
+
+    - **Pinned apps** appear at the top with a green dot (running) or gray dot (not running)
+    - **Running apps** show below with a pin icon
+    - Click a pinned app again to unpin it
+
+    <Info>
+      Start with 2-3 apps you're actively using right now. You can always add more later or create profiles for different workflows.
+    </Info>
+  </Step>
+
+  <Step title="Test the shortcut">
+    Press **Option+Tab** to open the app switcher overlay. You should see your pinned apps with icons.
+
+    - **Option+Tab** cycles forward through pinned apps
+    - **Shift+Option+Tab** cycles backward
+    - **Release Option** to activate the selected app
+    - **Escape** to cancel without switching
+
+    <Note>
+      The overlay uses `NSPanel` with `.screenSaver` level to float above all windows without stealing focus.
+    </Note>
+  </Step>
+</Steps>
+
+## Menu bar controls
+
+HopTab runs as a menu bar app (no Dock icon). Click the menu bar icon to access:
+
+- **Quick profile picker** - switch between profiles instantly
+- **Settings** - configure pinned apps, profiles, and shortcuts
+- **Quit** - stop HopTab (your pins and profiles are saved)
+
+<Info>
+  Your pinned apps and profiles are automatically saved to `UserDefaults` and persist across restarts.
+</Info>
+
+## Changing the shortcut
+
+If **Option+Tab** conflicts with another app, you can change it:
+
+1. Open **Settings > Shortcut**
+2. Select a preset:
+   - **Option+Tab** (default)
+   - **Control+Tab**
+   - **Option+`**
+3. Or choose **Custom** to record your own shortcut
+
+<Note>
+  The profile switcher shortcut is **Option+`** by default. If you set the app switcher to Option+`, the profile switcher automatically falls back to **Control+`** to avoid conflicts.
+</Note>
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Permissions guide" icon="lock" href="/guides/permissions">
+    Troubleshoot accessibility issues and understand why HopTab needs these permissions
+  </Card>
+  <Card title="Workflow examples" icon="briefcase" href="/guides/workflows">
+    Set up profiles for coding, design, writing, and more
+  </Card>
+</CardGroup>

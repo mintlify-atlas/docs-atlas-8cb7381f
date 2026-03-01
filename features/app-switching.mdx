@@ -1,0 +1,142 @@
+---
+title: App switching
+description: Learn how to switch between pinned apps using HopTab's keyboard-driven switcher
+---
+
+HopTab's app switcher lets you quickly cycle through your pinned apps using a global keyboard shortcut. Instead of cycling through every open window like macOS's Cmd+Tab, you only switch between the apps you've pinned.
+
+## How it works
+
+The app switcher uses a **release to activate** pattern. When you press the shortcut, an overlay appears showing your pinned apps. Continue holding the modifier key and press the trigger key to cycle through apps. When you release the modifier, the selected app activates.
+
+<Steps>
+  <Step title="Trigger the switcher">
+    Press your configured shortcut (default: `Option + Tab`) to show the switcher overlay
+  </Step>
+  
+  <Step title="Cycle through apps">
+    While holding the modifier key, press the trigger key again to move forward through your pinned apps
+  </Step>
+  
+  <Step title="Activate the selected app">
+    Release the modifier key to switch to the currently selected app
+  </Step>
+</Steps>
+
+## Keyboard controls
+
+| Action | Shortcut |
+|--------|----------|
+| Show switcher & cycle forward | `Option + Tab` (default) |
+| Cycle backward | `Shift + Option + Tab` |
+| Activate selected app | Release `Option` |
+| Cancel without switching | `Escape` |
+
+### Cycling direction
+
+The app switcher supports bidirectional cycling:
+
+- **Forward**: Press the trigger key (e.g., `Tab`) while holding the modifier
+- **Backward**: Add `Shift` to reverse direction (e.g., `Shift + Option + Tab`)
+
+This is implemented in `HotkeyService.swift:196-207`:
+
+```swift
+if isModifierHeld && keyCode == triggerKeyCode {
+    let shiftHeld = flags.contains(.maskShift)
+
+    if !isSwitcherActive {
+        isSwitcherActive = true
+        onSwitcherActivated?()
+    } else if shiftHeld {
+        onCycleBackward?()
+    } else {
+        onCycleForward?()
+    }
+    return nil
+}
+```
+
+## App activation behavior
+
+When you release the modifier key, HopTab activates the selected app using an aggressive activation strategy to ensure windows come to the front reliably.
+
+### Activation sequence
+
+HopTab performs three steps to activate an app (`AppSwitcherService.swift:15-31`):
+
+<Steps>
+  <Step title="Unhide the app">
+    If the app is hidden, unhide it first. Hidden apps won't come to the front otherwise.
+  </Step>
+  
+  <Step title="Activate with ignore other apps">
+    Use `activate(options: .activateIgnoringOtherApps)` to bring the app forward
+  </Step>
+  
+  <Step title="Raise windows via Accessibility API">
+    Force-raise all windows using `AXUIElementPerformAction(window, kAXRaiseAction)` to ensure windows appear on top
+  </Step>
+</Steps>
+
+```swift
+private static func activateRunning(_ app: NSRunningApplication) {
+    // 1. Unhide first — hidden apps won't come to front otherwise
+    if app.isHidden {
+        app.unhide()
+    }
+
+    // 2. Use the older, more aggressive activate API
+    app.activate(options: .activateIgnoringOtherApps)
+
+    // 3. Raise the frontmost window via Accessibility API as a fallback
+    raiseWindows(of: app)
+}
+```
+
+<Note>
+The three-step activation process fixes issues with stubborn apps like Simulator, Terminal, and other utilities that don't always raise their windows on macOS 14+.
+</Note>
+
+## Canceling the switcher
+
+You can cancel the switcher without switching apps:
+
+- Press `Escape` while the switcher is visible
+- The overlay closes and focus returns to your current app
+
+Implemented in `HotkeyService.swift:226-239`:
+
+```swift
+if keyCode == kVK_Escape {
+    if isSwitcherActive {
+        isSwitcherActive = false
+        isModifierHeld = false
+        onSwitcherCancelled?()
+        return nil
+    }
+}
+```
+
+## Recent app first (optional)
+
+By default, the switcher starts at the second app in your list when you first trigger it. You can enable **recent app first** mode to automatically move the last-activated app to the front of the list.
+
+When enabled (`AppState.swift:264-266`):
+
+```swift
+if recentAppFirst {
+    store.moveToFront(bundleIdentifier: selectedApp.bundleIdentifier)
+}
+```
+
+This creates an Alt+Tab-style "toggle between last two apps" behavior when you only tap the shortcut once.
+
+<CardGroup cols={2}>
+  <Card title="Profiles" icon="layer-group" href="/features/profiles">
+    Create different app sets for different workflows
+  </Card>
+  <Card title="Keyboard shortcuts" icon="keyboard" href="/features/shortcuts">
+    Customize your app switcher shortcut
+  </Card>
+</CardGroup>

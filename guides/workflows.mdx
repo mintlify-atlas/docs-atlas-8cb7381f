@@ -1,0 +1,255 @@
+---
+title: Workflow examples
+description: Real-world profile setups for coding, design, writing, and more
+---
+
+Profiles let you maintain different sets of pinned apps for different contexts. Instead of constantly pinning and unpinning apps throughout the day, create profiles and switch between them instantly.
+
+## What are profiles?
+
+A **profile** is a named collection of pinned apps. When you activate a profile, your pinned apps change to match that workflow.
+
+Example:
+- **Coding** profile: Xcode, Simulator, Terminal
+- **Design** profile: Figma, Safari, Preview
+- **Writing** profile: Notion, Safari, ChatGPT
+
+Switch profiles from the menu bar, from Settings, or with **Option+`**. Your active profile persists across restarts.
+
+## Setting up profiles
+
+<Steps>
+  <Step title="Create a new profile">
+    1. Open **Settings > Profiles**
+    2. Enter a name in the **New Profile** field (e.g., "Coding")
+    3. Click **Add**
+
+    <Info>
+      Profile names are freeform. Use whatever makes sense for your workflow: "Work", "Gaming", "Research", "Deep Focus", etc.
+    </Info>
+  </Step>
+
+  <Step title="Pin apps to the profile">
+    1. In **Settings > Profiles**, click **Activate** next to your new profile
+    2. Switch to the **Pinned Apps** tab
+    3. Click apps in the **Running Apps** section to pin them
+
+    <Note>
+      Each profile has its own independent set of pinned apps. Pinning an app in one profile doesn't affect other profiles.
+    </Note>
+  </Step>
+
+  <Step title="Switch profiles">
+    You can switch profiles three ways:
+
+    - **Menu bar dropdown** - click the HopTab icon and select a profile
+    - **Settings > Profiles** - click **Activate** next to any profile
+    - **Keyboard shortcut** - press **Option+`** to cycle through profiles
+
+    <Info>
+      The profile switcher works just like the app switcher: hold Option, press ` to cycle, release Option to activate.
+    </Info>
+  </Step>
+</Steps>
+
+## Example setups
+
+Here are real-world profile configurations based on the workflows HopTab was designed for.
+
+### Coding
+
+**Pinned apps:** Xcode, Simulator, Terminal
+
+**When to use:** Building and debugging iOS/macOS apps
+
+**Why it works:**
+- Jump between code (Xcode) and the running app (Simulator) instantly
+- Drop into Terminal to run git commands or build scripts
+- Everything else (Slack, Safari, Spotify) stays out of the way
+
+<Accordion title="Setup steps">
+  1. Create a profile named **Coding**
+  2. Launch Xcode, Simulator, and Terminal
+  3. Pin all three apps in the **Pinned Apps** tab
+  4. Press **Option+Tab** to hop between them
+</Accordion>
+
+<Note>
+  Simulator is notoriously stubborn about coming to the front on macOS 14+. HopTab uses `AXUIElementPerformAction(app, kAXRaiseAction)` to force-raise it.
+</Note>
+
+### Design
+
+**Pinned apps:** Figma, Safari, Preview
+
+**When to use:** UI/UX work, design review, asset export
+
+**Why it works:**
+- Toggle between design files (Figma) and reference sites (Safari)
+- Preview exported assets or mockups in Preview
+- Keep Slack and Notion in the background for async updates
+
+<Accordion title="Setup steps">
+  1. Create a profile named **Design**
+  2. Launch Figma, Safari, and Preview
+  3. Pin all three apps
+  4. Assign this profile to a dedicated desktop (see [Desktop assignment](#desktop-assignment))
+</Accordion>
+
+### Writing
+
+**Pinned apps:** Notion, Safari, ChatGPT
+
+**When to use:** Documentation, research, content creation
+
+**Why it works:**
+- Draft in Notion while referencing docs in Safari
+- Use ChatGPT for brainstorming or editing
+- No distractions from dev tools or Slack
+
+<Accordion title="Setup steps">
+  1. Create a profile named **Writing**
+  2. Launch Notion, Safari, and your browser with ChatGPT open
+  3. Pin all three apps
+  4. Press **Option+Tab** to flow between writing, research, and AI assistance
+</Accordion>
+
+<Info>
+  If you use ChatGPT in a browser, you can pin the browser twice (once for docs, once for ChatGPT) or use a separate browser profile.
+</Info>
+
+### Communications
+
+**Pinned apps:** Slack, Mail, Calendar
+
+**When to use:** Catching up on messages, email triage, meeting prep
+
+**Why it works:**
+- Batch-process comms without context-switching to dev tools
+- Quickly check Slack, respond to email, and review your schedule
+- Switch back to a focused profile when done
+
+<Accordion title="Setup steps">
+  1. Create a profile named **Comms**
+  2. Launch Slack, Mail, and Calendar
+  3. Pin all three apps
+  4. Use **Option+`** to switch to this profile during breaks or start-of-day
+</Accordion>
+
+## Desktop assignment
+
+This is where profiles become powerful. Assign a profile to a macOS desktop (Space) and it **auto-activates** when you swipe there.
+
+### How it works
+
+1. Swipe to the desktop you want to assign
+2. Open **Settings > Profiles**
+3. Click **Assign to this desktop** next to the profile you want there
+4. Repeat for other desktops
+
+Now when you swipe between desktops, your pinned apps change automatically.
+
+<Note>
+  HopTab uses `CGSGetActiveSpace` (a private API) to identify macOS Spaces. Space IDs can change after a reboot or when you add/remove desktops.
+</Note>
+
+### Example: 3-desktop workflow
+
+**Desktop 1** → **Coding** profile
+- Xcode, Simulator, Terminal
+- Press **Option+Tab** to hop between dev tools
+
+**Desktop 2** → **Design** profile
+- Figma, Safari, Preview
+- Press **Option+Tab** to hop between design tools
+
+**Desktop 3** → **Comms** profile
+- Slack, Mail, Calendar
+- Press **Option+Tab** to hop between communication apps
+
+Swipe to Desktop 1 and **Option+Tab** becomes a laser-focused toggle for coding. Swipe to Desktop 3 and the same shortcut now hops between Slack, Mail, and Calendar. Zero manual switching.
+
+<Warning>
+  If your desktop assignments stop working after a reboot, macOS may have reassigned Space IDs. Just reassign the profiles — it takes 5 seconds.
+</Warning>
+
+### Reassigning or removing assignments
+
+To change which desktop a profile is assigned to:
+
+1. Swipe to the **new** desktop you want
+2. Open **Settings > Profiles**
+3. Click **Reassign to this desktop** next to the profile
+
+To remove a desktop assignment:
+
+1. Open **Settings > Profiles**
+2. Click **Remove** next to the assigned desktop indicator
+
+## Tips and tricks
+
+<AccordionGroup>
+  <Accordion title="Use profiles for focus modes">
+    Create a **Deep Focus** profile with just your editor and terminal. No Slack, no browser, no distractions.
+
+    Activate it when you need flow state, then switch back to your regular profile when done.
+  </Accordion>
+
+  <Accordion title="Combine with macOS Desktop switching">
+    Assign each profile to a dedicated desktop and use **Control+←/→** to switch between them.
+
+    HopTab detects the desktop change and activates the assigned profile automatically.
+  </Accordion>
+
+  <Accordion title="Pin the same app to multiple profiles">
+    If Safari is useful in both **Design** and **Writing** profiles, pin it to both.
+
+    Each profile maintains its own pin list independently.
+  </Accordion>
+
+  <Accordion title="Start with 2-3 profiles">
+    Don't over-engineer. Start with:
+    - A **Default** profile for general use
+    - A **Focus** profile for deep work
+
+    Add more profiles as you discover natural context boundaries.
+  </Accordion>
+</AccordionGroup>
+
+## Managing profiles
+
+### Renaming a profile
+
+1. Open **Settings > Profiles**
+2. Click the **pencil icon** next to the profile name
+3. Enter a new name and click **Save**
+
+### Deleting a profile
+
+1. Open **Settings > Profiles**
+2. Click the **trash icon** next to the profile
+
+<Warning>
+  You cannot delete your only profile. HopTab always maintains at least one profile (usually "Default").
+</Warning>
+
+### Reordering pinned apps
+
+In **Settings > Pinned Apps**, drag apps up or down in the **Pinned Apps** section to reorder them.
+
+The order affects cycling: **Option+Tab** cycles through apps in the order they appear in the list.
+
+<Note>
+  If you enable **Move recently switched app to front** in **Settings > Shortcut > Behavior**, the app you just switched from moves to the front of the list for faster toggling.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Initial setup" icon="rocket" href="/guides/setup">
+    First launch, pinning apps, and testing shortcuts
+  </Card>
+  <Card title="Profiles reference" icon="person" href="/reference/profiles">
+    Complete API for profiles, desktop assignment, and profile switching
+  </Card>
+</CardGroup>

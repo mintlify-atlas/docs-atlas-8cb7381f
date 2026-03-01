@@ -1,0 +1,208 @@
+---
+title: Architecture
+description: HopTab's architecture and design decisions
+---
+
+HopTab is built with SwiftUI and follows a clean separation of concerns across app lifecycle, services, models, and views.
+
+## Project structure
+
+The codebase is organized into four main layers:
+
+```
+HopTab/
+├── App/              # Application lifecycle and state
+├── Models/           # Data structures and persistence
+├── Services/         # Core functionality (hotkeys, switching, permissions)
+└── Views/            # SwiftUI UI components
+```
+
+### App layer
+
+The app layer manages the application lifecycle and global state:
+
+- **HopTabApp.swift** - SwiftUI app entry point with `MenuBarExtra` and `Settings` scenes
+- **AppDelegate.swift** - Handles launch, permission checks, and hotkey initialization
+- **AppState.swift** - Central `@ObservableObject` that coordinates all services and publishes state changes to views
+
+```swift HopTab/App/HopTabApp.swift
+@main
+struct HopTabApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
+    var body: some Scene {
+        MenuBarExtra("HopTab", systemImage: "arrow.2.squarepath") {
+            MenuBarView()
+                .environmentObject(delegate.appState)
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(delegate.appState)
+        }
+    }
+}
+```
+
+`AppState` acts as the central coordinator, managing:
+
+- Pinned apps store (`PinnedAppsStore`)
+- Hotkey service (`HotkeyService`)
+- Overlay window controllers
+- Running apps list
+- Shortcut configuration
+- Profile switching logic
+- Desktop assignment via Space tracking
+
+### Models layer
+
+Models define the core data structures:
+
+- **PinnedApp** - Represents a pinned application with bundle ID, display name, and sort order
+- **Profile** - Named collection of pinned apps (e.g., "Coding", "Design")
+- **PinnedAppsStore** - Manages profiles, active profile, and persistence to `UserDefaults`
+- **ShortcutConfig** - Configurable keyboard shortcut presets and custom shortcuts
+- **KeyCodeMapping** - Maps key codes to human-readable names
+
+```swift HopTab/Models/PinnedApp.swift
+struct PinnedApp: Codable, Identifiable, Equatable, Hashable {
+    let bundleIdentifier: String
+    let displayName: String
+    var sortOrder: Int
+
+    var id: String { bundleIdentifier }
+
+    // Computed properties
+    var icon: NSImage { ... }
+    var isRunning: Bool { ... }
+    var runningApplication: NSRunningApplication? { ... }
+    var applicationURL: URL? { ... }
+}
+```
+
+### Services layer
+
+Services encapsulate system interactions:
+
+- **HotkeyService** - Global keyboard event monitoring via `CGEvent` tap
+- **AppSwitcherService** - App activation using `NSRunningApplication` and `AXUIElement`
+- **SpaceService** - Desktop (Space) tracking via private CGS APIs
+- **PermissionsService** - Accessibility permission checks
+
+Each service is single-purpose and communicates with `AppState` via callbacks.
+
+### Views layer
+
+SwiftUI views for the UI:
+
+- **MenuBarView** - Menu bar dropdown with profile selector and settings access
+- **SettingsView** - Multi-tab settings window (Pinned Apps, Profiles, Shortcut)
+- **OverlayPanel** - Non-activating `NSPanel` for the app switcher overlay
+- **OverlayView** - SwiftUI view showing pinned apps with vibrancy blur
+- **ProfileOverlayView** - Profile switcher overlay
+- **AppIconView** - App icon rendering with running indicator
+- **ShortcutRecorderView** - Custom shortcut key recorder
+
+## Core architectural decisions
+
+### SwiftUI + AppKit hybrid
+
+HopTab uses SwiftUI for UI with strategic AppKit integration where needed:
+
+- **SwiftUI** for declarative UI (settings, menu bar, overlay content)
+- **AppKit** for system-level functionality (event taps, window management, accessibility)
+
+The overlay uses `NSPanel` wrapped in SwiftUI via `NSHostingView` for precise control over window level and behavior.
+
+### State management
+
+`AppState` is the single source of truth, implemented as an `@ObservableObject`:
+
+```swift HopTab/App/AppState.swift
+@MainActor
+final class AppState: ObservableObject {
+    let store = PinnedAppsStore()
+    let permissions = PermissionsService()
+
+    private let hotkeyService = HotkeyService()
+    private let overlayController = OverlayWindowController()
+    private let profileOverlayController = ProfileOverlayWindowController()
+
+    @Published private(set) var selectedIndex: Int = 0
+    @Published private(set) var isSwitcherVisible: Bool = false
+    @Published var runningApps: [NSRunningApplication] = []
+    // ...
+}
+```
+
+Services communicate with `AppState` through callbacks, not direct state mutation:
+
+```swift HopTab/App/AppState.swift
+private func setupHotkeyCallbacks() {
+    hotkeyService.onSwitcherActivated = { [weak self] in
+        self?.showSwitcher()
+    }
+
+    hotkeyService.onCycleForward = { [weak self] in
+        self?.cycleForward()
+    }
+
+    hotkeyService.onSwitcherDismissed = { [weak self] in
+        self?.dismissAndActivate()
+    }
+    // ...
+}
+```
+
+### Persistence
+
+All app data persists to `UserDefaults`:
+
+- Pinned apps (per profile)
+- Profiles and active profile
+- Desktop-to-profile assignments
+- Shortcut configuration
+
+The `PinnedAppsStore` handles serialization and deserialization of `Codable` models.
+
+### No sandboxing
+
+<Warning>
+HopTab **does not use the App Sandbox** because `CGEvent.tapCreate` requires the `com.apple.security.temporary-exception.mach-lookup.global-name` entitlement, which is incompatible with sandboxing.
+</Warning>
+
+This is a deliberate architectural choice. The alternative (`NSEvent.addGlobalMonitorForEvents`) cannot swallow events, which would cause the default Cmd+Tab behavior to trigger alongside HopTab.
+
+### Accessibility dependency
+
+HopTab requires Accessibility permission for two reasons:
+
+1. **Event tap creation** - `CGEvent.tapCreate(.cgSessionEventTap, ...)` requires it
+2. **Window raising** - `AXUIElementPerformAction(window, kAXRaiseAction)` forces windows to the front
+
+Without Accessibility, the event tap fails to create and window activation doesn't work reliably.
+
+## Data flow
+
+1. **User presses shortcut** → `HotkeyService` detects via event tap
+2. **HotkeyService callback** → `AppState.showSwitcher()` called
+3. **AppState reads data** → Gets pinned apps from `PinnedAppsStore`
+4. **AppState shows overlay** → `OverlayWindowController.show()` displays UI
+5. **User cycles apps** → `HotkeyService` detects Tab presses → `AppState` updates selection
+6. **User releases modifier** → `HotkeyService` callback → `AppState.dismissAndActivate()`
+7. **AppState activates app** → `AppSwitcherService.activate()` brings app to front
+8. **Service uses AX API** → `AXUIElementPerformAction` raises windows
+
+## Threading model
+
+All UI and state management runs on the main thread via `@MainActor`:
+
+```swift
+@MainActor
+final class AppState: ObservableObject { ... }
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate { ... }
+```
+
+The event tap callback runs on the main run loop, so no thread synchronization is needed for hotkey events.

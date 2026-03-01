@@ -1,0 +1,198 @@
+---
+title: Profiles
+description: Create multiple profiles with different pinned apps for different workflows
+---
+
+Profiles let you maintain separate sets of pinned apps for different tasks. Instead of constantly pinning and unpinning apps throughout the day, create profiles and switch between them instantly.
+
+## What are profiles?
+
+Each profile is a named collection of pinned apps. You can create as many profiles as you need and switch between them using the menu bar, settings window, or a keyboard shortcut.
+
+The `Profile` model (`Profile.swift:3-13`) is simple:
+
+```swift
+struct Profile: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var pinnedApps: [PinnedApp]
+
+    init(id: UUID = UUID(), name: String, pinnedApps: [PinnedApp] = []) {
+        self.id = id
+        self.name = name
+        self.pinnedApps = pinnedApps
+    }
+}
+```
+
+## Creating profiles
+
+<Steps>
+  <Step title="Open Settings">
+    Click the HopTab menu bar icon and select **Settings**
+  </Step>
+  
+  <Step title="Go to Profiles tab">
+    Navigate to the **Profiles** section
+  </Step>
+  
+  <Step title="Add a new profile">
+    Click **Add** and give your profile a descriptive name (e.g., "Coding", "Design", "Writing")
+  </Step>
+  
+  <Step title="Pin apps to the profile">
+    Switch to the new profile, then go to the **Pinned Apps** tab to select which apps belong to this workflow
+  </Step>
+</Steps>
+
+## Switching profiles
+
+You can switch profiles in three ways:
+
+<CardGroup cols={3}>
+  <Card title="Menu bar" icon="bars">
+    Click the HopTab icon and select a profile from the dropdown
+  </Card>
+  
+  <Card title="Settings window" icon="gear">
+    Select a profile from the list in Settings > Profiles
+  </Card>
+  
+  <Card title="Keyboard shortcut" icon="keyboard">
+    Use `Option + \`` (default) to cycle through profiles
+  </Card>
+</CardGroup>
+
+### Profile switcher shortcut
+
+The profile switcher works just like the app switcher:
+
+| Action | Shortcut |
+|--------|----------|
+| Show profiles & cycle forward | `Option + \`` |
+| Cycle backward | `Shift + Option + \`` |
+| Activate selected profile | Release `Option` |
+| Cancel | `Escape` |
+
+<Note>
+If you set your app switcher to `Option + \``, the profile switcher automatically falls back to `Control + \`` to avoid conflicts.
+</Note>
+
+This automatic fallback is implemented in `AppState.swift:142-152`:
+
+```swift
+if appShortcutSelection.modifierFlags == .maskAlternate &&
+   appShortcutSelection.keyCode == Int64(kVK_ANSI_Grave) {
+    // Conflict detected — use Control instead
+    modFlag = .maskControl
+    keyCode = Int64(kVK_ANSI_Grave)
+    modName = "Control"
+} else {
+    // Default profile shortcut
+    modFlag = .maskAlternate
+    keyCode = Int64(kVK_ANSI_Grave)
+    modName = "Option"
+}
+```
+
+## Example workflows
+
+Here are some common profile setups:
+
+<Accordion title="Coding">
+  **Pinned apps**: Xcode, Simulator, Terminal
+  
+  **When to use**: Building and debugging iOS/macOS apps. Switch between your IDE, the running simulator, and terminal for logs.
+</Accordion>
+
+<Accordion title="Design">
+  **Pinned apps**: Figma, Safari, Preview
+  
+  **When to use**: UI/UX work. Hop between your design tool, reference screenshots, and browser testing.
+</Accordion>
+
+<Accordion title="Writing">
+  **Pinned apps**: Notion, Safari, ChatGPT
+  
+  **When to use**: Documentation and research. Quickly switch between your editor, research tabs, and AI assistant.
+</Accordion>
+
+<Accordion title="Communication">
+  **Pinned apps**: Slack, Mail, Calendar
+  
+  **When to use**: Catching up on messages. Cycle through your communication tools without distraction.
+</Accordion>
+
+## Profile storage
+
+Profiles are stored in `UserDefaults` and persist across app restarts. The storage implementation (`PinnedAppsStore.swift:140-150`) uses JSON encoding:
+
+```swift
+private func save() {
+    if let data = try? JSONEncoder().encode(profiles) {
+        UserDefaults.standard.set(data, forKey: Self.profilesKey)
+    }
+    if let id = activeProfileId {
+        UserDefaults.standard.set(id.uuidString, forKey: Self.activeProfileKey)
+    }
+    // Also save space mapping for desktop assignment
+    let stringMap = Dictionary(uniqueKeysWithValues: spaceMapping.map { ("\($0.key)", $0.value.uuidString) })
+    UserDefaults.standard.set(stringMap, forKey: Self.spaceMappingKey)
+}
+```
+
+### Legacy migration
+
+If you upgrade from an older version of HopTab that didn't have profiles, your pinned apps are automatically migrated to a "Default" profile (`PinnedAppsStore.swift:178-186`):
+
+```swift
+if let data = UserDefaults.standard.data(forKey: Self.legacyKey),
+   let apps = try? JSONDecoder().decode([PinnedApp].self, from: data) {
+    let defaultProfile = Profile(name: "Default", pinnedApps: apps.sorted { $0.sortOrder < $1.sortOrder })
+    profiles = [defaultProfile]
+    activeProfileId = defaultProfile.id
+    save()
+    UserDefaults.standard.removeObject(forKey: Self.legacyKey)
+    return
+}
+```
+
+## Managing profiles
+
+### Renaming profiles
+
+```swift
+func renameProfile(id: UUID, to name: String) {
+    guard let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
+    profiles[idx].name = name
+    save()
+}
+```
+
+### Deleting profiles
+
+When you delete a profile, any desktop assignments to that profile are also removed:
+
+```swift
+func deleteProfile(id: UUID) {
+    profiles.removeAll { $0.id == id }
+    spaceMapping = spaceMapping.filter { $0.value != id }
+    if activeProfileId == id {
+        activeProfileId = profiles.first?.id
+    }
+    save()
+}
+```
+
+<Warning>
+Deleting a profile is permanent. Make sure you don't need the pinned app configuration before removing it.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Desktop assignment" icon="desktop" href="/features/desktop-assignment">
+    Auto-switch profiles when you change desktops
+  </Card>
+  <Card title="App switching" icon="arrow-right-arrow-left" href="/features/app-switching">
+    Learn how the app switcher works
+  </Card>
+</CardGroup>

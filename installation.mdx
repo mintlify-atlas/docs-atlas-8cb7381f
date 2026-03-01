@@ -1,0 +1,151 @@
+---
+title: Installation
+description: Download HopTab from releases or build from source
+---
+
+# Installation
+
+HopTab is distributed as a macOS app bundle. You can download a prebuilt release or build from source.
+
+## Download from releases
+
+The easiest way to get HopTab is to download the latest prebuilt release.
+
+<Steps>
+  <Step title="Download the latest release">
+    Grab the latest `.zip` from [**GitHub Releases**](https://github.com/royalbhati/HopTab/releases/latest).
+  </Step>
+  
+  <Step title="Unzip and move to Applications">
+    Unzip the downloaded file and drag **HopTab.app** to `/Applications`.
+  </Step>
+  
+  <Step title="Clear Gatekeeper quarantine">
+    HopTab is ad-hoc signed (not Apple notarized), so macOS will show *"Apple could not verify..."* when you try to open it. Clear the quarantine flag:
+    
+    ```bash
+    xattr -d com.apple.quarantine /Applications/HopTab.app
+    ```
+    
+    This is safe — you can verify the source code yourself on [GitHub](https://github.com/royalbhati/HopTab).
+  </Step>
+  
+  <Step title="Launch HopTab">
+    Open HopTab from `/Applications`. You'll see a menu bar icon (arrow icon) appear at the top of your screen.
+  </Step>
+</Steps>
+
+<Note>
+**Why the xattr command?** HopTab is ad-hoc signed (not Apple notarized) so macOS shows *"Apple could not verify..."*. The command above clears the quarantine flag so it opens normally. This is safe — you can verify the source code yourself.
+</Note>
+
+### One-line install
+
+If you prefer automation, use this one-liner to download, unzip, and clear the quarantine flag:
+
+```bash
+curl -sL "$(curl -s https://api.github.com/repos/royalbhati/HopTab/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' \
+  | head -1 \
+  | cut -d '"' -f 4)" -o /tmp/HopTab.zip \
+  && unzip -o /tmp/HopTab.zip -d /Applications \
+  && xattr -d com.apple.quarantine /Applications/HopTab.app
+```
+
+Then launch HopTab from `/Applications`.
+
+## Build from source
+
+If you want to build HopTab yourself, you'll need Xcode 15+ and macOS 14+.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/royalbhati/HopTab.git
+    cd HopTab
+    ```
+  </Step>
+  
+  <Step title="Open in Xcode">
+    ```bash
+    open HopTab.xcodeproj
+    ```
+  </Step>
+  
+  <Step title="Build and run">
+    Press **Cmd+R** to build and run. HopTab will launch and appear in your menu bar.
+  </Step>
+</Steps>
+
+<Note>
+The source code is available at [github.com/royalbhati/HopTab](https://github.com/royalbhati/HopTab). The [release workflow](https://github.com/royalbhati/HopTab/blob/main/.github/workflows/release.yml) automatically builds and packages releases when a new tag is pushed.
+</Note>
+
+## First launch setup
+
+After installing HopTab, you'll need to grant Accessibility permission for the global hotkey to work.
+
+<Steps>
+  <Step title="Open HopTab">
+    Launch HopTab from `/Applications`. You'll see a menu bar icon appear.
+  </Step>
+  
+  <Step title="Grant Accessibility permission">
+    HopTab will prompt you to grant **Accessibility** permission. This is required to detect global keyboard shortcuts (`Option+Tab`, etc.).
+    
+    Click **Open System Settings** in the prompt, or go to:
+    
+    **System Settings > Privacy & Security > Accessibility**
+    
+    Enable the toggle next to **HopTab**.
+  </Step>
+  
+  <Step title="Verify permission">
+    Return to HopTab. If the permission was granted successfully, you'll see a green checkmark in the Settings window.
+  </Step>
+</Steps>
+
+<Warning>
+**Without Accessibility permission, HopTab cannot detect keyboard shortcuts.** The app will not function until you grant this permission.
+</Warning>
+
+### Why Accessibility permission?
+
+HopTab uses `CGEvent.tapCreate` to intercept keyboard events globally. This allows it to:
+
+- Detect `Option+Tab` (or your configured shortcut) system-wide
+- Swallow the event so it doesn't reach other apps
+- Cycle through pinned apps and activate the selected one
+
+The Accessibility permission is required by macOS for any app that uses event taps. HopTab does not collect or transmit any data — it only monitors the specific keyboard shortcuts you configure.
+
+Here's the relevant code from `HopTab/Services/PermissionsService.swift:21-23`:
+
+```swift
+let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+isTrusted = AXIsProcessTrustedWithOptions(opts)
+UserDefaults.standard.set(true, forKey: Self.hasPromptedKey)
+```
+
+And the event tap setup from `HopTab/Services/HotkeyService.swift:69-82`:
+
+```swift
+guard let tap = CGEvent.tapCreate(
+    tap: .cgSessionEventTap,
+    place: .headInsertEventTap,
+    options: .defaultTap,
+    eventsOfInterest: mask,
+    callback: hotkeyCallback,
+    userInfo: Unmanaged.passUnretained(self).toOpaque()
+) else {
+    NSLog("[HotkeyService] Failed to create event tap — Accessibility not granted?")
+    DispatchQueue.main.async { [weak self] in
+        self?.onTapFailed?()
+    }
+    return
+}
+```
+
+## Next steps
+
+Now that HopTab is installed and configured, head to the [quick start guide](/quickstart) to learn how to pin apps and start hopping.

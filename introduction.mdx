@@ -1,0 +1,101 @@
+---
+title: Introduction
+description: A lightweight macOS app switcher that lets you pin specific apps and hop between them with a single shortcut
+---
+
+# Welcome to HopTab
+
+A lightweight macOS app switcher that lets you pin specific apps and hop between them with a single shortcut. No more cycling through 10+ open apps — just the 2-3 you actually need.
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Download from releases or build from source
+  </Card>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get up and running in under 2 minutes
+  </Card>
+  <Card title="Keyboard shortcuts" icon="keyboard" href="/shortcuts">
+    Master the app and profile switcher shortcuts
+  </Card>
+  <Card title="Profiles" icon="layer-group" href="/profiles">
+    Create workflow-specific app collections
+  </Card>
+</CardGroup>
+
+## Why HopTab?
+
+If you're the kind of person who has 10 apps open, actively use only 2–3, but refuse to close the other 7 because "what if I need them later?" — this is for you.
+
+On macOS, `Cmd+Tab` feels like being invited to a chaotic family reunion: Slack, Mail, Safari, Xcode, Terminal, Figma, Spotify, Notes… everyone shows up uninvited, loudly competing for attention — when all you really want is to calmly switch between your IDE and the simulator for now.
+
+HopTab fixes this: **pin** the apps you're actually focused on, then **Option+Tab** hops only between those. Everything else stays out of the way.
+
+## The productivity boost
+
+Most of us don't work on one thing at a time. You're coding in Xcode while checking the Simulator, glancing at Figma for the design, and Slack keeps pinging. But in any given *moment*, you're really only bouncing between 2-3 of those. The problem is `Cmd+Tab` doesn't know that — it treats every open app equally.
+
+HopTab gives you **focused switching**. Pin the 2-3 apps you need right now, and `Option+Tab` becomes a laser-focused toggle between just those. When your context changes — say you shift from coding to writing docs — just switch your profile and your pinned apps change with you. Zero friction, zero distraction.
+
+**Profiles + Desktop assignment** takes this further. Assign a "Coding" profile to Desktop 1 and a "Design" profile to Desktop 2. Now when you swipe between desktops, your pinned apps automatically change to match what you do there. Your workspace adapts to *you*, not the other way around.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Pin any app" icon="thumbtack">
+    Pick from running apps in Settings, click to pin/unpin
+  </Card>
+  <Card title="Global hotkey" icon="keyboard">
+    Option+Tab (default), configurable to Control+Tab or Option+`
+  </Card>
+  <Card title="Overlay switcher" icon="window-restore">
+    Native vibrancy blur panel shows pinned apps with icons
+  </Card>
+  <Card title="Cycle forward/backward" icon="arrows-rotate">
+    Shift reverses direction, Escape cancels
+  </Card>
+  <Card title="Release to activate" icon="hand-pointer">
+    Let go of the modifier key to switch to the selected app
+  </Card>
+  <Card title="Profiles" icon="layer-group">
+    Create named profiles (e.g. "Coding", "Design", "Writing") each with their own set of pinned apps
+  </Card>
+  <Card title="Profile switcher shortcut" icon="arrows-turn-to-dots">
+    Option+` to cycle through profiles without leaving the keyboard
+  </Card>
+  <Card title="Desktop assignment" icon="desktop">
+    Bind a profile to a macOS desktop, auto-switches when you swipe to that Space
+  </Card>
+  <Card title="Persistent pins" icon="floppy-disk">
+    Your pinned apps and profiles survive restarts
+  </Card>
+  <Card title="Aggressive activation" icon="arrow-up-right-from-square">
+    Uses Accessibility API to force-raise windows (fixes stubborn apps like Simulator)
+  </Card>
+  <Card title="Menu bar app" icon="bars">
+    Lives in the menu bar, doesn't clutter your Dock
+  </Card>
+</CardGroup>
+
+## Requirements
+
+- **macOS 14.0 (Sonoma) or later**
+- **Accessibility permission** (prompted on first launch)
+- **Swift 5.9+** (if building from source)
+
+## Technical highlights
+
+HopTab uses several key macOS APIs to deliver a smooth, native experience:
+
+- **CGEvent tap** (not `NSEvent.addGlobalMonitorForEvents`) — required to *swallow* the shortcut so it doesn't reach other apps
+- **No App Sandbox** — `CGEvent.tapCreate(.defaultTap)` requires raw event access, incompatible with the sandbox
+- **AXUIElement window raising** — `NSRunningApplication.activate()` doesn't always bring windows to front on macOS 14+; the AX `kAXRaiseAction` forces it
+- **`NSPanel` overlay** — non-activating, borderless, `.screenSaver` level so it floats above everything without stealing focus
+- **`CGSGetActiveSpace` private API** — used for desktop-to-profile mapping; degrades gracefully if Space IDs become stale
+
+<Note>
+HopTab is open source under the MIT license. Contributions are welcome on [GitHub](https://github.com/royalbhati/HopTab).
+</Note>
+
+## Get started
+
+Ready to reclaim your `Tab` key? Head to the [installation guide](/installation) to download HopTab, or jump straight to the [quick start](/quickstart) to see it in action.

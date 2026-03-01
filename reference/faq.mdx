@@ -1,0 +1,248 @@
+---
+title: FAQ
+description: Frequently asked questions about HopTab
+---
+
+## General
+
+<Accordion title="What is HopTab?">
+  HopTab is a lightweight macOS app switcher that lets you pin specific apps and hop between them with a single shortcut (Option+Tab by default).
+
+  Instead of cycling through all 10+ open apps like Cmd+Tab does, you pin the 2-3 apps you're actually using right now and switch only between those.
+</Accordion>
+
+<Accordion title="How is this different from Cmd+Tab?">
+  Cmd+Tab cycles through **all** open apps. HopTab only cycles through the apps you've **pinned** to your current profile.
+
+  This means:
+  - Fewer apps to cycle through (typically 2-3 instead of 10+)
+  - Faster switching (one or two presses instead of holding Tab 5 times)
+  - Context-aware (you can have different pinned apps for different workflows)
+</Accordion>
+
+<Accordion title="Is HopTab free?">
+  Yes. HopTab is open source (MIT license) and completely free to use.
+</Accordion>
+
+<Accordion title="Does HopTab replace Cmd+Tab?">
+  No. Cmd+Tab still works normally. HopTab uses **Option+Tab** by default (configurable) so it doesn't conflict with the native app switcher.
+
+  You can use both:
+  - **Cmd+Tab** for switching to any open app
+  - **Option+Tab** for switching between your pinned apps
+</Accordion>
+
+## Installation
+
+<Accordion title="Why does macOS say 'Apple could not verify HopTab'?">
+  HopTab is **ad-hoc signed** (not Apple notarized) because it uses low-level event taps that are incompatible with the App Sandbox.
+
+  This is safe — HopTab is open source and you can verify the code yourself. To bypass the warning:
+
+  ```bash
+  xattr -d com.apple.quarantine /Applications/HopTab.app
+  ```
+
+  This removes the Gatekeeper quarantine flag and allows HopTab to launch normally.
+</Accordion>
+
+<Accordion title="Do I need to build from source or can I use the pre-built binary?">
+  You can use the pre-built binary from [GitHub Releases](https://github.com/royalbhati/HopTab/releases/latest). Building from source is only necessary if you want to modify the code or contribute to the project.
+</Accordion>
+
+<Accordion title="Can I install HopTab with Homebrew?">
+  Not yet. Currently you need to download the `.zip` from GitHub Releases and drag it to `/Applications`.
+
+  If you'd like a Homebrew cask, please open an issue or submit a PR.
+</Accordion>
+
+## Permissions
+
+<Accordion title="Why does HopTab need Accessibility permission?">
+  HopTab needs Accessibility permission to:
+  - Detect global keyboard shortcuts (Option+Tab, Option+\`)
+  - Intercept and swallow the shortcut so it doesn't reach other apps
+  - Switch between your pinned apps
+  - Raise windows to the front when activated
+
+  Without Accessibility permission, the global shortcuts won't work and the event tap will fail to start.
+</Accordion>
+
+<Accordion title="Can I use HopTab without Accessibility permission?">
+  No. The core functionality (global shortcuts and app switching) requires Accessibility permission. Without it, HopTab cannot function.
+</Accordion>
+
+<Accordion title="Does HopTab log my keystrokes?">
+  No. HopTab only listens for its configured shortcuts (Option+Tab and Option+\` by default). All other keystrokes are passed through unchanged.
+
+  You can verify this yourself — HopTab is open source and the event handling code is in `HotkeyService.swift:115`.
+</Accordion>
+
+## Usage
+
+<Accordion title="How do I pin an app?">
+  1. Open **Settings** from the menu bar icon
+  2. Go to **Pinned Apps**
+  3. Click the app you want to pin (it will show a checkmark)
+  4. Close Settings
+
+  Now press Option+Tab to switch between your pinned apps.
+</Accordion>
+
+<Accordion title="Can I pin apps that aren't currently running?">
+  Not directly. The app picker in Settings only shows **currently running** apps.
+
+  However, once you pin an app, it stays pinned even if you quit it. When you activate it from the switcher, HopTab will launch it if it's not running.
+</Accordion>
+
+<Accordion title="How do I change the shortcut?">
+  1. Open **Settings** from the menu bar icon
+  2. Go to **Shortcut**
+  3. Select a preset: **Option+Tab** (default), **Control+Tab**, or **Option+\`**
+  4. The shortcut changes immediately
+</Accordion>
+
+<Accordion title="Can I use a custom shortcut (e.g. Cmd+Space)?">
+  Not yet. Currently you can only choose from three presets:
+  - Option+Tab (default)
+  - Control+Tab
+  - Option+\`
+
+  If you'd like custom shortcut support, please open an issue on GitHub.
+</Accordion>
+
+<Accordion title="How do I cycle backward through apps?">
+  Hold **Shift** while pressing the shortcut. For example:
+  - **Option+Tab** cycles forward
+  - **Shift+Option+Tab** cycles backward
+</Accordion>
+
+<Accordion title="How do I cancel the switcher without switching apps?">
+  Press **Escape** while the switcher is visible. This dismisses the overlay without activating any app.
+</Accordion>
+
+## Profiles
+
+<Accordion title="What are profiles?">
+  Profiles let you maintain different sets of pinned apps for different workflows.
+
+  For example:
+  - **Coding** profile: Xcode, Simulator, Terminal
+  - **Design** profile: Figma, Safari, Preview
+  - **Writing** profile: Notion, Safari, ChatGPT
+
+  You can switch between profiles with **Option+\`** (or Control+\` if your app switcher uses Option+\`).
+</Accordion>
+
+<Accordion title="How do I create a profile?">
+  1. Open **Settings > Profiles**
+  2. Click **Add**
+  3. Name your profile (e.g. "Coding", "Design", "Writing")
+  4. Switch to the new profile
+  5. Go to **Pinned Apps** and pin the apps for this workflow
+</Accordion>
+
+<Accordion title="How do I switch profiles?">
+  You can switch profiles in three ways:
+  - Press **Option+\`** (or Control+\` if your app switcher uses Option+\`)
+  - Use the dropdown in the menu bar
+  - Go to **Settings > Profiles** and click a profile
+</Accordion>
+
+<Accordion title="Can I assign a profile to a macOS desktop (Space)?">
+  Yes. This is one of HopTab's most powerful features.
+
+  1. Swipe to the desktop you want to assign
+  2. Open **Settings > Profiles**
+  3. Click **Assign to this desktop** next to the profile you want
+
+  Now when you swipe to that desktop, the profile (and its pinned apps) automatically switches.
+
+  Example:
+  - Desktop 1 → "Coding" profile → Xcode + Simulator + Terminal
+  - Desktop 2 → "Design" profile → Figma + Safari + Preview
+
+  Swipe to Desktop 1 and Option+Tab hops between Xcode, Simulator, and Terminal. Swipe to Desktop 2 and it hops between Figma, Safari, and Preview.
+</Accordion>
+
+<Accordion title="Why do desktop assignments stop working after reboot?">
+  Space IDs are **session-local** — they can change after a reboot or when you add/remove desktops.
+
+  HopTab uses the private `CGSGetActiveSpace` API to identify Spaces. This is the only way to detect desktop switches, but the IDs are not persistent.
+
+  To fix:
+  1. Swipe to each desktop
+  2. Open **Settings > Profiles**
+  3. Click **Assign to this desktop**
+
+  Reassigning takes 5 seconds and only needs to be done after reboots.
+</Accordion>
+
+## Technical
+
+<Accordion title="Why doesn't HopTab use the App Sandbox?">
+  HopTab uses `CGEvent.tapCreate(.defaultTap)` to intercept global keyboard events. This requires raw event access, which is incompatible with the macOS App Sandbox.
+
+  The App Sandbox would prevent the event tap from starting, making HopTab non-functional.
+</Accordion>
+
+<Accordion title="Why use CGEvent tap instead of NSEvent.addGlobalMonitorForEvents?">
+  `NSEvent.addGlobalMonitorForEvents` can listen to global events, but it **cannot swallow them**. That means the shortcut would still reach other apps, and the native Cmd+Tab would still trigger alongside HopTab.
+
+  `CGEvent.tapCreate` is the only API that lets you intercept and suppress keyboard events, which is critical for a custom app switcher.
+</Accordion>
+
+<Accordion title="How does HopTab raise windows to the front?">
+  HopTab uses the Accessibility API (`AXUIElement` with `kAXRaiseAction`) to force-raise windows.
+
+  This is more aggressive than `NSRunningApplication.activate()` and works with stubborn apps like Simulator that don't always respond to standard activation.
+
+  See `AppSwitcherService.swift:activateApp()` for the implementation.
+</Accordion>
+
+<Accordion title="What happens if the event tap is disabled by timeout?">
+  MacOS sometimes disables event taps if they take too long to process events (typically more than 1 second).
+
+  When this happens, HopTab automatically re-enables the tap and resets the modifier state. If the switcher was active, it will be cancelled.
+
+  This is handled in `HotkeyService.swift:117`.
+</Accordion>
+
+<Accordion title="Does HopTab work on Apple Silicon?">
+  Yes. HopTab is a universal binary and runs natively on both Intel and Apple Silicon Macs.
+</Accordion>
+
+<Accordion title="What macOS versions are supported?">
+  HopTab requires **macOS 14.0 (Sonoma) or later**.
+
+  It may work on older versions, but it's only tested and supported on macOS 14+.
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="The app switcher doesn't appear when I press Option+Tab">
+  This usually means HopTab doesn't have Accessibility permission.
+
+  1. Open **System Settings > Privacy & Security > Accessibility**
+  2. Make sure HopTab is in the list and toggled **on**
+  3. If it's not there, click **+** and add HopTab from `/Applications`
+
+  See [Troubleshooting](/reference/troubleshooting) for more details.
+</Accordion>
+
+<Accordion title="Some apps don't raise to the front when I switch to them">
+  HopTab uses the Accessibility API to force-raise windows, but some apps (like system utilities) may not respond to these commands.
+
+  Try:
+  1. Make sure the app is actually running (not just in the Dock)
+  2. Click the app in the switcher overlay instead of using the keyboard
+  3. Activate it from the macOS menu bar first
+
+  If an app consistently doesn't raise, please file an issue on GitHub with the app name.
+</Accordion>
+
+<Accordion title="Where can I get more help?">
+  - Check the [Troubleshooting](/reference/troubleshooting) guide
+  - File an issue on [GitHub Issues](https://github.com/royalbhati/HopTab/issues)
+  - Include your macOS version, HopTab version, and steps to reproduce the issue
+</Accordion>

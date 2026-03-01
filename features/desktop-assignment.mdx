@@ -1,0 +1,221 @@
+---
+title: Desktop assignment
+description: Automatically switch profiles when you swipe between macOS Spaces
+---
+
+Desktop assignment lets you bind profiles to specific macOS desktops (Spaces). When you swipe to a desktop, HopTab automatically activates the assigned profile and updates your pinned apps.
+
+## How it works
+
+Each macOS Space has a unique numeric ID. HopTab maintains a mapping from Space IDs to profile IDs. When the active Space changes, HopTab looks up the assigned profile and switches to it automatically.
+
+The mapping is stored in `PinnedAppsStore.swift:14`:
+
+```swift
+/// Maps Space ID (Int) → Profile ID (UUID string). Persisted in UserDefaults.
+@Published var spaceMapping: [Int: UUID] = [:]
+```
+
+## Assigning profiles to desktops
+
+<Steps>
+  <Step title="Swipe to the target desktop">
+    Use Mission Control or a swipe gesture to navigate to the desktop you want to configure
+  </Step>
+  
+  <Step title="Open Settings > Profiles">
+    Click the HopTab menu bar icon and select **Settings**, then go to the **Profiles** tab
+  </Step>
+  
+  <Step title="Assign the profile">
+    Click **"Assign to this desktop"** next to the profile you want to activate on this Space
+  </Step>
+  
+  <Step title="Repeat for other desktops">
+    Swipe to other desktops and assign profiles as needed
+  </Step>
+</Steps>
+
+### Assigning implementation
+
+When you click "Assign to this desktop", HopTab calls `assignProfileToCurrentSpace` (`PinnedAppsStore.swift:64-70`):
+
+```swift
+func assignProfileToCurrentSpace(profileId: UUID) {
+    guard let spaceId = SpaceService.currentSpaceId else { return }
+    // Remove any existing mapping for this profile (one profile per space)
+    spaceMapping = spaceMapping.filter { $0.value != profileId }
+    spaceMapping[spaceId] = profileId
+    save()
+}
+```
+
+<Note>
+Each profile can only be assigned to one desktop at a time. Assigning a profile to a new desktop automatically removes its previous assignment.
+</Note>
+
+## Automatic profile switching
+
+HopTab listens for `NSWorkspace.activeSpaceDidChangeNotification` to detect when you switch desktops (`AppState.swift:343-354`):
+
+```swift
+let spaceObserver = center.addObserver(
+    forName: NSWorkspace.activeSpaceDidChangeNotification,
+    object: nil,
+    queue: .main
+) { [weak self] _ in
+    Task { @MainActor in
+        self?.handleSpaceChange()
+    }
+}
+```
+
+When the notification fires, `handleSpaceChange` looks up the profile and activates it (`AppState.swift:356-361`):
+
+```swift
+private func handleSpaceChange() {
+    guard let spaceId = SpaceService.currentSpaceId,
+          let profileId = store.profileForSpace(spaceId)
+    else { return }
+    store.setActiveProfile(id: profileId)
+}
+```
+
+## Getting the current Space ID
+
+HopTab uses a private macOS API to get the currently active Space ID. The `SpaceService` wrapper (`SpaceService.swift:10-16`) calls `CGSGetActiveSpace`:
+
+```swift
+static var currentSpaceId: Int? {
+    let conn = CGSMainConnectionID()
+    guard conn > 0 else { return nil }
+    let spaceId = CGSGetActiveSpace(conn)
+    guard spaceId > 0 else { return nil }
+    return spaceId
+}
+```
+
+The private API functions are declared using `@_silgen_name` (`SpaceService.swift:22-27`):
+
+```swift
+@_silgen_name("CGSMainConnectionID")
+private func CGSMainConnectionID() -> Int32
+
+@_silgen_name("CGSGetActiveSpace")
+private func CGSGetActiveSpace(_ cid: Int32) -> Int
+```
+
+<Warning>
+**Space IDs are session-local and can change** after a reboot or when you add/remove desktops in Mission Control. If your assignments stop working, just reassign them — it only takes a few seconds.
+</Warning>
+
+## Example workflow
+
+Set up context-specific workspaces across multiple desktops:
+
+<CardGroup cols={3}>
+  <Card title="Desktop 1: Coding" icon="code">
+    **Profile**: Coding
+    
+    **Apps**: Xcode, Simulator, Terminal
+  </Card>
+  
+  <Card title="Desktop 2: Design" icon="paintbrush">
+    **Profile**: Design
+    
+    **Apps**: Figma, Safari, Preview
+  </Card>
+  
+  <Card title="Desktop 3: Communication" icon="comments">
+    **Profile**: Comms
+    
+    **Apps**: Slack, Mail, Calendar
+  </Card>
+</CardGroup>
+
+Now when you swipe between desktops:
+
+- Swipe to Desktop 1 → HopTab activates the "Coding" profile
+- Press `Option + Tab` → cycle through Xcode, Simulator, Terminal
+- Swipe to Desktop 3 → HopTab switches to "Comms" profile
+- Press `Option + Tab` → now cycling through Slack, Mail, Calendar
+
+Your workspace adapts automatically. No manual profile switching needed.
+
+## Looking up assignments
+
+You can check which profile is assigned to a Space, or which Space is assigned to a profile:
+
+### Profile for a Space
+
+```swift
+func profileForSpace(_ spaceId: Int) -> UUID? {
+    guard let profileId = spaceMapping[spaceId],
+          profiles.contains(where: { $0.id == profileId })
+    else { return nil }
+    return profileId
+}
+```
+
+### Space for a profile
+
+```swift
+func spaceForProfile(_ profileId: UUID) -> Int? {
+    spaceMapping.first { $0.value == profileId }?.key
+}
+```
+
+## Removing assignments
+
+To unassign a profile from its desktop (`PinnedAppsStore.swift:73-76`):
+
+```swift
+func unassignProfileFromSpace(profileId: UUID) {
+    spaceMapping = spaceMapping.filter { $0.value != profileId }
+    save()
+}
+```
+
+When you delete a profile, any desktop assignments are automatically removed (`PinnedAppsStore.swift:46-53`):
+
+```swift
+func deleteProfile(id: UUID) {
+    profiles.removeAll { $0.id == id }
+    spaceMapping = spaceMapping.filter { $0.value != id }
+    if activeProfileId == id {
+        activeProfileId = profiles.first?.id
+    }
+    save()
+}
+```
+
+## Persistence
+
+The Space-to-profile mapping is saved to `UserDefaults` as a dictionary of strings (`PinnedAppsStore.swift:148-149`):
+
+```swift
+let stringMap = Dictionary(uniqueKeysWithValues: spaceMapping.map { ("\($0.key)", $0.value.uuidString) })
+UserDefaults.standard.set(stringMap, forKey: Self.spaceMappingKey)
+```
+
+On load, the string dictionary is converted back to `[Int: UUID]` (`PinnedAppsStore.swift:154-161`):
+
+```swift
+if let stringMap = UserDefaults.standard.dictionary(forKey: Self.spaceMappingKey) as? [String: String] {
+    spaceMapping = [:]
+    for (spaceStr, profileStr) in stringMap {
+        if let spaceId = Int(spaceStr), let profileId = UUID(uuidString: profileStr) {
+            spaceMapping[spaceId] = profileId
+        }
+    }
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Profiles" icon="layer-group" href="/features/profiles">
+    Learn how to create and manage profiles
+  </Card>
+  <Card title="App switching" icon="arrow-right-arrow-left" href="/features/app-switching">
+    Understand the app switcher behavior
+  </Card>
+</CardGroup>

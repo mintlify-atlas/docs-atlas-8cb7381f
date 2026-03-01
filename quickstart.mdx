@@ -1,80 +1,194 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get up and running with HopTab in under 2 minutes
 ---
 
-## Get started in three steps
+# Quick start
 
-Get your documentation site running locally and make your first customization.
+This guide walks you through the basics: installing HopTab, granting permissions, pinning your first apps, and using the switcher.
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Install HopTab">
+    Download the latest release and move it to `/Applications`. Clear the Gatekeeper quarantine flag:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    xattr -d com.apple.quarantine /Applications/HopTab.app
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    See the [installation guide](/installation) for detailed instructions.
+  </Step>
+  
+  <Step title="Grant Accessibility permission">
+    Launch HopTab from `/Applications`. You'll be prompted to grant **Accessibility** permission.
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    Go to **System Settings > Privacy & Security > Accessibility** and enable HopTab.
+    
+    <Warning>
+    Without this permission, HopTab cannot detect keyboard shortcuts and will not function.
+    </Warning>
+  </Step>
+  
+  <Step title="Pin your first apps">
+    Click the HopTab menu bar icon (arrow icon) and select **Settings**.
+    
+    In the **Pinned Apps** tab, you'll see a list of all running apps. Click an app to pin it. Pinned apps show a checkmark.
+    
+    Start simple: pin 2-3 apps you're actively using right now (e.g. your browser, terminal, and editor).
+  </Step>
+  
+  <Step title="Try the switcher">
+    Press **Option+Tab** to bring up the app switcher overlay. You'll see your pinned apps with icons.
+    
+    - Press **Tab** again (while holding Option) to cycle forward
+    - Press **Shift+Tab** to cycle backward
+    - Release **Option** to activate the selected app
+    - Press **Escape** to cancel
+    
+    That's it! You're now hopping between your pinned apps.
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Customize the shortcut
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+The default shortcut is `Option+Tab`, but you can change it in **Settings > Shortcut**.
 
-### Step 3: Go live
+<Tabs>
+  <Tab title="Preset shortcuts">
+    Choose from three presets:
+    
+    - **⌥ Option + Tab** (default)
+    - **⌃ Control + Tab**
+    - **⌥ Option + `**
+    
+    Select a preset from the dropdown in Settings.
+  </Tab>
+  
+  <Tab title="Custom shortcut">
+    If you want a different combination, enable **Custom** mode and record your shortcut:
+    
+    1. Toggle **Use custom shortcut** in Settings
+    2. Click the **Record** button
+    3. Press your desired modifier + key combination
+    4. Click **Save**
+    
+    HopTab will immediately start listening for the new shortcut.
+  </Tab>
+</Tabs>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Here's how shortcuts are configured in code (`HopTab/Models/ShortcutConfig.swift:6-48`):
+
+```swift
+enum ShortcutPreset: String, Codable, CaseIterable, Identifiable {
+    case optionTab
+    case controlTab
+    case optionBacktick
+
+    var displayName: String {
+        switch self {
+        case .optionTab: return "\u{2325} Option + Tab"
+        case .controlTab: return "\u{2303} Control + Tab"
+        case .optionBacktick: return "\u{2325} Option + `"
+        }
+    }
+
+    var modifierFlag: CGEventFlags {
+        switch self {
+        case .optionTab, .optionBacktick: return .maskAlternate
+        case .controlTab: return .maskControl
+        }
+    }
+
+    var keyCode: Int64 {
+        switch self {
+        case .optionTab, .controlTab: return Int64(kVK_Tab)
+        case .optionBacktick: return Int64(kVK_ANSI_Grave)
+        }
+    }
+}
+```
+
+## Understanding the overlay
+
+When you press your switcher shortcut, HopTab displays a floating overlay panel with your pinned apps. The overlay is implemented as an `NSPanel` that floats above all other windows (`HopTab/Views/OverlayPanel.swift`).
+
+The panel uses:
+
+- **`.nonactivatingPanel` style** — doesn't steal focus from other apps
+- **`.screenSaver` window level** — floats above everything
+- **Vibrancy blur effect** — native macOS translucency
+
+Here's the panel setup:
+
+```swift
+init(contentRect: NSRect) {
+    super.init(
+        contentRect: contentRect,
+        styleMask: [.borderless, .nonactivatingPanel],
+        backing: .buffered,
+        defer: false
+    )
+    
+    level = .screenSaver
+    isOpaque = false
+    backgroundColor = .clear
+    hasShadow = true
+    collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+}
+```
+
+## How apps are activated
+
+When you release the modifier key, HopTab activates the selected app using the Accessibility API. This is more aggressive than the standard `NSRunningApplication.activate()` and works reliably with stubborn apps like Simulator (`HopTab/Services/AppSwitcherService.swift:15-31`):
+
+```swift
+private static func activateRunning(_ app: NSRunningApplication) {
+    // 1. Unhide first — hidden apps won't come to front otherwise
+    if app.isHidden {
+        app.unhide()
+    }
+
+    // 2. Use the older, more aggressive activate API
+    //    The macOS 14+ parameterless activate() is weaker and doesn't
+    //    always raise windows for apps like Simulator, Terminal, etc.
+    app.activate(options: .activateIgnoringOtherApps)
+
+    // 3. Raise the frontmost window via Accessibility API as a fallback.
+    //    This forces the window to the top of the window stack, solving
+    //    the issue where activate() updates the menu bar but leaves
+    //    the window behind other apps.
+    raiseWindows(of: app)
+}
+```
+
+The `raiseWindows` function uses `AXUIElementPerformAction` with `kAXRaiseAction` to force windows to the front:
+
+```swift
+private static func raiseWindows(of app: NSRunningApplication) {
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value)
+    guard result == .success, let windows = value as? [AXUIElement] else { return }
+
+    for window in windows {
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    }
+}
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Keyboard shortcuts" icon="keyboard" href="/shortcuts">
+    Master all the shortcuts for app and profile switching
+  </Card>
+  <Card title="Profiles" icon="layer-group" href="/profiles">
+    Create workflow-specific app collections
+  </Card>
+  <Card title="Desktop assignment" icon="desktop" href="/desktop-assignment">
+    Auto-switch profiles when you swipe between desktops
+  </Card>
+  <Card title="Settings" icon="gear" href="/settings">
+    Explore all configuration options
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

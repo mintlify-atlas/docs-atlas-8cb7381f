@@ -1,0 +1,312 @@
+---
+title: Building from source
+description: How to build and run HopTab locally
+---
+
+Building HopTab from source requires Xcode and macOS Sonoma or later.
+
+## Requirements
+
+- **Xcode 15.0 or later**
+- **macOS 14.0 (Sonoma) or later**
+- **Git** for cloning the repository
+
+<Info>
+HopTab uses SwiftUI APIs introduced in macOS 14, so earlier versions are not supported.
+</Info>
+
+## Clone the repository
+
+```bash
+git clone https://github.com/royalbhati/HopTab.git
+cd HopTab
+```
+
+The repository structure:
+
+```
+HopTab/
+├── HopTab/                  # Source code
+│   ├── App/                # Application lifecycle
+│   ├── Models/             # Data models
+│   ├── Services/           # Core services
+│   ├── Views/              # SwiftUI views
+│   ├── Assets.xcassets/    # App icons and images
+│   └── Info.plist          # App metadata
+├── HopTab.xcodeproj/       # Xcode project
+├── .github/workflows/      # CI/CD workflows
+├── demo/                   # Demo video
+├── LICENSE
+└── README.md
+```
+
+## Open in Xcode
+
+```bash
+open HopTab.xcodeproj
+```
+
+Xcode will open the project. No external dependencies or package managers are needed — HopTab uses only system frameworks.
+
+## Build configuration
+
+### Entitlements
+
+HopTab requires specific entitlements to function:
+
+<CodeGroup>
+```xml HopTab.entitlements (implied by Info.plist)
+<!-- No App Sandbox -->
+<!-- Sandboxing is disabled because CGEvent.tapCreate requires raw event access -->
+
+<!-- Hardened Runtime -->
+<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+<false/>
+<key>com.apple.security.cs.disable-library-validation</key>
+<false/>
+```
+</CodeGroup>
+
+<Warning>
+**App Sandbox is disabled.** This is required for `CGEvent.tapCreate(.cgSessionEventTap, ...)` to work. The event tap API is incompatible with sandboxing.
+</Warning>
+
+### Info.plist keys
+
+The `Info.plist` includes:
+
+```xml
+<key>LSUIElement</key>
+<true/>
+```
+
+This makes HopTab a **menu bar app** (no Dock icon).
+
+```xml
+<key>NSHumanReadableDescription</key>
+<string>HopTab needs Accessibility permission to detect global keyboard shortcuts.</string>
+```
+
+This message appears in the Accessibility permission prompt.
+
+## Build and run
+
+### Debug build
+
+Press **Cmd+R** in Xcode to build and run in debug mode.
+
+On first launch:
+
+1. macOS will prompt for **Accessibility permission**
+2. Click **Open System Settings**
+3. Enable **HopTab** in **Privacy & Security > Accessibility**
+4. Return to HopTab and it will start automatically
+
+### Release build
+
+To build a release version:
+
+1. In Xcode, select **Product > Scheme > Edit Scheme...**
+2. Under **Run**, change **Build Configuration** to **Release**
+3. Press **Cmd+B** to build
+
+The compiled app will be in:
+
+```
+~/Library/Developer/Xcode/DerivedData/HopTab-<hash>/Build/Products/Release/HopTab.app
+```
+
+<Note>
+Release builds are ad-hoc signed by default. To notarize for distribution, you need an Apple Developer account and signing certificate.
+</Note>
+
+## Code signing
+
+### Ad-hoc signing (default)
+
+Xcode automatically ad-hoc signs the app for local development. This is sufficient for running on your own machine.
+
+```bash
+# Verify the signature
+codesign -dv --verbose=4 /path/to/HopTab.app
+```
+
+You'll see:
+
+```
+Signature=adhoc
+```
+
+### Developer ID signing (for distribution)
+
+To distribute the app, you need a **Developer ID Application certificate**:
+
+1. In Xcode, select the **HopTab** target
+2. Go to **Signing & Capabilities**
+3. Set **Team** to your Apple Developer team
+4. Change **Signing Certificate** to **Developer ID Application**
+5. Build the app
+
+<Warning>
+**After building**, the app must be **notarized** by Apple before others can run it. Without notarization, macOS Gatekeeper shows "Apple could not verify..." and blocks the app.
+</Warning>
+
+### Notarization (optional)
+
+Notarization submits your app to Apple for malware scanning:
+
+```bash
+# Archive the app
+ditto -c -k --keepParent HopTab.app HopTab.zip
+
+# Submit for notarization
+xcrun notarytool submit HopTab.zip \
+  --apple-id your@email.com \
+  --team-id YOUR_TEAM_ID \
+  --password your-app-specific-password \
+  --wait
+
+# Staple the notarization ticket
+xcrun stapler staple HopTab.app
+```
+
+After stapling, the app will open on any Mac without warnings.
+
+## Running without Accessibility permission
+
+If you skip the Accessibility permission, the app will:
+
+- Launch successfully
+- Show a warning in the menu bar: "Accessibility permission required"
+- Not respond to keyboard shortcuts
+
+The event tap creation fails without permission:
+
+```swift HopTab/Services/HotkeyService.swift
+guard let tap = CGEvent.tapCreate(...) else {
+    NSLog("[HotkeyService] Failed to create event tap — Accessibility not granted?")
+    DispatchQueue.main.async { [weak self] in
+        self?.onTapFailed?()
+    }
+    return
+}
+```
+
+You can grant permission later in **System Settings > Privacy & Security > Accessibility**.
+
+## CI/CD builds
+
+The repository includes GitHub Actions workflows:
+
+### Build workflow
+
+**`.github/workflows/build.yml`** - Runs on every PR to verify the code compiles:
+
+```yaml
+- name: Build
+  run: xcodebuild build -project HopTab.xcodeproj -scheme HopTab -configuration Release
+```
+
+### Release workflow
+
+**`.github/workflows/release.yml`** - Triggered by version tags (e.g., `v1.0.0`):
+
+1. Extracts version from tag
+2. Updates `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in Xcode project
+3. Builds in Release configuration
+4. Packages `HopTab.app` into a `.zip`
+5. Creates a GitHub Release with the `.zip` attached
+
+```yaml
+- name: Build Release
+  run: |
+    xcodebuild archive \
+      -project HopTab.xcodeproj \
+      -scheme HopTab \
+      -configuration Release \
+      -archivePath build/HopTab.xcarchive
+    
+    ditto -c -k --keepParent build/HopTab.xcarchive/Products/Applications/HopTab.app HopTab.zip
+```
+
+<Info>
+The release workflow uses ad-hoc signing. Users must run `xattr -d com.apple.quarantine HopTab.app` after download to bypass Gatekeeper.
+</Info>
+
+## Common build issues
+
+### "Code signing error"
+
+**Problem:** Xcode can't find a valid signing identity.
+
+**Solution:** In **Signing & Capabilities**, set **Signing Certificate** to **Sign to Run Locally** for local development.
+
+### "Deployment target mismatch"
+
+**Problem:** The deployment target is higher than your macOS version.
+
+**Solution:** The project requires macOS 14.0+. Upgrade macOS or change the deployment target in **Build Settings > Deployment > macOS Deployment Target** (may cause runtime errors if using macOS 14 APIs).
+
+### "Event tap creation failed"
+
+**Problem:** Accessibility permission not granted.
+
+**Solution:** Go to **System Settings > Privacy & Security > Accessibility** and enable HopTab. You may need to quit and relaunch the app.
+
+### "App crashes on launch"
+
+**Problem:** Missing system frameworks or corrupted build.
+
+**Solution:**
+
+```bash
+# Clean build folder
+xcodebuild clean -project HopTab.xcodeproj -scheme HopTab
+
+# Delete derived data
+rm -rf ~/Library/Developer/Xcode/DerivedData/HopTab-*
+
+# Rebuild
+open HopTab.xcodeproj
+# Press Cmd+B
+```
+
+## Debugging tips
+
+### Console logging
+
+HopTab uses `NSLog` for debug output. To view logs:
+
+1. Open **Console.app**
+2. Filter by process: `HopTab`
+3. Press the shortcut and watch for log messages
+
+Example logs:
+
+```
+[HotkeyService] Event tap started — app modifier=0x80000 key=48, profile modifier=0x80000 key=50
+[HotkeyService] Re-enabled event tap after timeout — reset modifier state
+[AppSwitcherService] Failed to launch app: <error>
+```
+
+### Xcode debugger
+
+Set breakpoints in:
+
+- `HotkeyService.swift:handleEvent` - Hotkey detection logic
+- `AppState.swift:showSwitcher` - Overlay display
+- `AppSwitcherService.swift:activate` - App activation
+
+Run with **Cmd+R** and trigger the shortcut to step through the code.
+
+### Event tap debugging
+
+If shortcuts aren't working, check:
+
+```swift
+print("Event tap running: \(hotkeyService.isRunning)")
+print("Modifier held: \(hotkeyService.isModifierHeld)")
+print("Switcher active: \(hotkeyService.isSwitcherActive)")
+```
+
+If `isRunning == false`, the event tap creation failed (likely missing Accessibility permission).
